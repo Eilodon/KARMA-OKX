@@ -128,6 +128,77 @@ export function issuePolicy(account: Account, p: IssuePolicyParams): Promise<Wri
   });
 }
 
+/** Mirrors `KarmaPolicyEnforcer.PolicyAuthorization` field-for-field — this IS the EIP-712 typed
+ *  struct, not a loosely-related shape, so it can be passed directly as `signTypedData`'s
+ *  `message` and as `issuePolicyWithSignature`'s `auth` tuple argument. */
+export interface PolicyAuthorization {
+  policyId: `0x${string}`;
+  subject: Address;
+  actionDigest: `0x${string}`;
+  maxPerTransaction: bigint;
+  maxCumulativeExposure: bigint;
+  expiresAt: bigint;
+  nonce: bigint;
+  policyHash: `0x${string}`;
+}
+
+/** The exact EIP-712 domain `KarmaPolicyEnforcer`'s constructor registers
+ *  (`EIP712("KarmaPolicyEnforcer", "1")`) plus this deployment's chain id/address — a signature
+ *  produced against any other domain (wrong name/version/chainId/contract) recovers to a
+ *  different address than the actual signer, per `ECDSA.recoverCalldata`'s own semantics, so
+ *  getting this domain exactly right is what makes a signature "for this contract" at all. */
+function policyAuthorizationDomain(chainId: number) {
+  return {
+    name: "KarmaPolicyEnforcer",
+    version: "1",
+    chainId,
+    verifyingContract: getPolicyEnforcerAddress(),
+  } as const;
+}
+
+const POLICY_AUTHORIZATION_TYPES = {
+  PolicyAuthorization: [
+    { name: "policyId", type: "bytes32" },
+    { name: "subject", type: "address" },
+    { name: "actionDigest", type: "bytes32" },
+    { name: "maxPerTransaction", type: "uint256" },
+    { name: "maxCumulativeExposure", type: "uint256" },
+    { name: "expiresAt", type: "uint64" },
+    { name: "nonce", type: "uint64" },
+    { name: "policyHash", type: "bytes32" },
+  ],
+} as const;
+
+/** Principal-side half of the signed-policy flow: produces an EIP-712 signature over `auth`
+ *  that `issuePolicyWithSignature` (submitted by anyone — a relayer, the subject itself) will
+ *  recover back to `account.address`. The principal never broadcasts a transaction or pays gas
+ *  for this step. */
+export async function signPolicyAuthorization(account: Account, auth: PolicyAuthorization): Promise<`0x${string}`> {
+  const chainId = getPublicClient().chain?.id;
+  if (chainId == null) throw new Error("[KARMA] cannot sign a policy authorization: X Layer chain id unavailable");
+  const walletClient = getWalletClient(account);
+  return walletClient.signTypedData({
+    account,
+    domain: policyAuthorizationDomain(chainId),
+    types: POLICY_AUTHORIZATION_TYPES,
+    primaryType: "PolicyAuthorization",
+    message: auth,
+  });
+}
+
+/** Executor-side half: anyone holding `auth` + a valid signature over it can submit this — the
+ *  stored policy's `principal` is whoever `ECDSA.recoverCalldata` recovers from the signature,
+ *  not `account`/`msg.sender`. */
+export function issuePolicyWithSignature(
+  account: Account,
+  p: { auth: PolicyAuthorization; signature: `0x${string}` },
+): Promise<WriteOutcome> {
+  return writePolicyEnforcerBounded(account, {
+    functionName: "issuePolicyWithSignature",
+    args: [p.auth, p.signature],
+  });
+}
+
 export function validateAndRecordExecution(
   account: Account,
   p: { policyId: `0x${string}`; amount: bigint },

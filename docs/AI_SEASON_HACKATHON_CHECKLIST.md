@@ -61,23 +61,41 @@ Verify: `pnpm exec vitest run src/__tests__/policy_compiler.test.ts src/__tests_
 ## 2. X Layer hard enforcement — contract DONE, deploy NEEDS A HUMAN
 
 - [x] `contracts/policy/KarmaPolicyEnforcer.sol` — additive sidecar (same convention as
-      `RationaleAttestation.sol`), direct on-chain issuance (documented scope-cut vs. EIP-712 —
-      see the contract's own header comment for why), custom errors matching the plan's Section
-      CII rejection-code vocabulary literally (`PerTransactionLimitExceeded`,
-      `CumulativeExposureExceeded`, `PolicyExpired`, `PolicyRevoked`, ...).
-- [x] `test/KarmaPolicyEnforcer.t.sol` — 14 Foundry tests, all passing (`forge test --match-contract
+      `RationaleAttestation.sol`), custom errors matching the plan's Section CII rejection-code
+      vocabulary literally (`PerTransactionLimitExceeded`, `CumulativeExposureExceeded`,
+      `PolicyExpired`, `PolicyRevoked`, ...). **Two issuance paths, both fully enforced
+      identically afterward:**
+      1. `issuePolicy` — direct, `msg.sender` is the principal.
+      2. `issuePolicyWithSignature` — EIP-712 (OpenZeppelin's `EIP712`/`ECDSA`, not a hand-rolled
+         digest), principal recovered from a `PolicyAuthorization` signature instead of paying gas
+         itself; anyone (relayer, the subject) can submit it. This was originally a documented
+         scope-cut ("direct issuance only") — built this session once the direct path was proven
+         solid; see the contract's header comment for the full domain-separation rationale (two
+         layers now: the EIP-712 domain separator itself, plus `policyId`'s own derivation).
+- [x] `test/KarmaPolicyEnforcer.t.sol` — 20 Foundry tests, all passing (`forge test --match-contract
       KarmaPolicyEnforcerTest`), directly covering Definition-of-Done Scenario D (hard cap → revert)
-      and Scenario H-style "revocation doesn't rewrite already-recorded spend." Includes
-      `testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence` — a genuine 256-run Foundry
-      fuzz test (this repo had **zero** parameterized/fuzzed Solidity tests before this one —
-      every existing `test/*.t.sol` file takes no arguments, so Foundry's fuzzer never ran on any
-      of them) proving Section XXVII's "Available = Limit - Reserved - Committed" invariant holds
-      across random call sequences, plus an explicit same-block "two reservations race for the
-      same budget" test showing the second call correctly sees the first's already-updated state.
+      and Scenario H-style "revocation doesn't rewrite already-recorded spend." Includes:
+      - `testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence` — a genuine 256-run Foundry
+        fuzz test (this repo had **zero** parameterized/fuzzed Solidity tests before this one —
+        every pre-existing `test/*.t.sol` file takes no arguments, so Foundry's fuzzer never ran
+        on any of them) proving Section XXVII's "Available = Limit - Reserved - Committed"
+        invariant holds across random call sequences, plus an explicit same-block "two
+        reservations race for the same budget" test.
+      - 6 `issuePolicyWithSignature` tests: a different signing key recovers to *that* key's own
+        address (never forges another principal), a tampered field after signing recovers to a
+        different address (doesn't silently authenticate), malformed signature bytes revert,
+        reused `policyId` reverts the same as the direct path, and a signed policy is enforced by
+        `validateAndRecordExecution` exactly like a directly-issued one.
 - [x] `src/lib/abi.ts` (`karmaPolicyEnforcerAbi`) + structural drift-guard test extended in
-      `src/__tests__/karma_contract.test.ts`.
+      `src/__tests__/karma_contract.test.ts` — this genuinely caught a real gap while wiring EIP-712
+      in: inheriting OpenZeppelin's `EIP712` adds `eip712Domain()`/`EIP712DomainChanged` (ERC-5267)
+      and `ECDSAInvalidSignature*`/`InvalidShortString`/`StringTooLong` errors to the contract's
+      real ABI that a hand-transcription would otherwise silently miss — the guard failed loudly
+      until those were added.
 - [x] `src/lib/xlayer_policy.ts` — TS read/write binding, copied skeleton-for-skeleton from
-      `xlayer_rationale.ts`.
+      `xlayer_rationale.ts`; `signPolicyAuthorization`/`issuePolicyWithSignature` added for the
+      signed path (`walletClient.signTypedData` against the exact same EIP-712 domain the
+      contract's constructor registers).
 - [ ] **Deploy to X Layer testnet — blocked on a funded key.** This sandbox has no `.env`, no
       credentials handoff file, and no `PRIVATE_KEY` in the environment (checked directly). Once a
       human funds a deployer key from `https://web3.okx.com/xlayer/faucet`:
@@ -154,26 +172,37 @@ review cycle needed once deployed and wired to a live env.
       access) so the browser bundle can decode contract reverts without pulling in
       `xlayer.ts`'s env-reading chain-client singletons, which would throw `process is not
       defined` in a browser.
+- [ ] The demo webpage's on-chain mode still only exercises the direct `issuePolicy` path, not the
+      newer `issuePolicyWithSignature` (§2) — the contract/TS binding/tests for the signed path
+      are done, wiring a "sign gas-lessly, let someone else submit" button into the page (and a
+      matching `karma_issue_policy_via_signature` MCP tool) is additive follow-up, not required
+      for AI Season eligibility.
 
-## 7. Not done — explicitly cut for this build (documented, not forgotten)
+## 7. EIP-712 signed policies — DONE (originally scoped out, built once the direct path proved solid)
+
+- [x] `issuePolicyWithSignature` on `KarmaPolicyEnforcer.sol` (§2) — see that section for the full
+      test list. Uses OpenZeppelin's `EIP712`/`ECDSA`, the same standard library every serious
+      EIP-712 integration uses, not a hand-rolled digest.
+- [x] `signPolicyAuthorization`/`issuePolicyWithSignature` in `src/lib/xlayer_policy.ts` (§2).
+
+## 8. Not done — explicitly cut for this build (documented, not forgotten)
 
 Recursive delegation/Contract Graph, cross-chain evidence dedup, ZK `PolicyCredentialProof`, EVM
-panel-arbitration port, an event indexer, EIP-712 signed policies (direct issuance is used
-instead — see `KarmaPolicyEnforcer.sol`'s header). None of these gate AI Season eligibility or the
-judging criteria (application of AI, innovation, product completeness, user value, X Layer
-integration, growth potential, ecosystem contribution) — they're legitimate future work once this
-kernel is proven live. (Concurrency fuzzing for Exposure Conservation, originally on this list,
-is now done — see §2.)
+panel-arbitration port, an event indexer. None of these gate AI Season eligibility or the judging
+criteria (application of AI, innovation, product completeness, user value, X Layer integration,
+growth potential, ecosystem contribution) — they're legitimate future work once this kernel is
+proven live. (Concurrency fuzzing for Exposure Conservation and EIP-712 signed policies, both
+originally on this list, are now done — see §2/§7.)
 
-## 8. Submission — owned by the user, not this agent session
+## 9. Submission — owned by the user, not this agent session
 
 Per explicit instruction this session: **X account, video, and the Google Form are the user's own
 responsibility**, not something to automate here. What this checklist owes that process:
 
 - A working, testable story: kernel (§1) proven by 36 passing property/unit tests, contract (§2)
-  proven by 14 passing Foundry tests (including a 256-run fuzz test), MCP surface (§3) proven by
-  7 passing tests, two named demo scripts (§4) ready to run the moment a funded key exists, and a
-  live, interactive, Playwright-verified demo webpage (§6) that needs no wallet at all to show the
-  compiler actually working.
+  proven by 20 passing Foundry tests (including a 256-run fuzz test and 6 EIP-712 signature
+  tests), MCP surface (§3) proven by 7 passing tests, two named demo scripts (§4) ready to run the
+  moment a funded key exists, and a live, interactive, Playwright-verified demo webpage (§6) that
+  needs no wallet at all to show the compiler actually working.
 - The AI-RWA framing is not a stretch: `fetchUsTreasuryYield`/`fetchBtcUsdPrice` (real, live,
   keyless public APIs, not stubs) already feed both demo scripts' narrative context.

@@ -25,6 +25,45 @@ contract KarmaPolicyEnforcerTest is Test {
         );
     }
 
+    // ── EIP-712 signing helpers — mirrors OpenZeppelin's own EIP712._buildDomainSeparator /
+    //    _hashTypedDataV4 exactly, so a bug here would show up as every signature test failing,
+    //    not as a false sense of security from a helper that "agrees with itself." ─────────────
+    bytes32 internal constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 internal constant POLICY_AUTHORIZATION_TYPEHASH = keccak256(
+        "PolicyAuthorization(bytes32 policyId,address subject,bytes32 actionDigest,uint256 maxPerTransaction,uint256 maxCumulativeExposure,uint64 expiresAt,uint64 nonce,bytes32 policyHash)"
+    );
+
+    function _domainSeparator() internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                EIP712_DOMAIN_TYPEHASH, keccak256(bytes("KarmaPolicyEnforcer")), keccak256(bytes("1")), block.chainid, address(enforcer)
+            )
+        );
+    }
+
+    function _digest(KarmaPolicyEnforcer.PolicyAuthorization memory auth) internal view returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                POLICY_AUTHORIZATION_TYPEHASH,
+                auth.policyId,
+                auth.subject,
+                auth.actionDigest,
+                auth.maxPerTransaction,
+                auth.maxCumulativeExposure,
+                auth.expiresAt,
+                auth.nonce,
+                auth.policyHash
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+    }
+
+    function _sign(uint256 signerPk, KarmaPolicyEnforcer.PolicyAuthorization memory auth) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, _digest(auth));
+        return abi.encodePacked(r, s, v);
+    }
+
     function _issue(bytes32 policyId, uint256 maxPerTx, uint256 maxCumulative, uint64 expiresAt, uint64 nonce) internal {
         vm.prank(alpha);
         enforcer.issuePolicy(policyId, beta, ACTION_DIGEST, maxPerTx, maxCumulative, expiresAt, nonce, POLICY_HASH);
@@ -256,5 +295,112 @@ contract KarmaPolicyEnforcerTest is Test {
 
         (,,,,, uint256 cumulativeSpent,,,,,) = enforcer.policies(policyId);
         assertEq(cumulativeSpent, 8, "only Child A's spend was ever recorded - no double-count");
+    }
+
+    // ── issuePolicyWithSignature (EIP-712) ──────────────────────────────────────────────────────
+
+    uint256 internal constant SIGNER_PK = 0xA11CE;
+    uint256 internal constant OTHER_PK = 0xB0B;
+
+    function _authorization(bytes32 policyId, uint64 nonce, uint64 expiresAt) internal view returns (KarmaPolicyEnforcer.PolicyAuthorization memory) {
+        return KarmaPolicyEnforcer.PolicyAuthorization({
+            policyId: policyId,
+            subject: beta,
+            actionDigest: ACTION_DIGEST,
+            maxPerTransaction: 100,
+            maxCumulativeExposure: 500,
+            expiresAt: expiresAt,
+            nonce: nonce,
+            policyHash: POLICY_HASH
+        });
+    }
+
+    function test_IssuePolicyWithSignature_Success_PrincipalIsRecoveredSigner() public {
+        address signerAddr = vm.addr(SIGNER_PK);
+        uint64 expiresAt = uint64(block.timestamp + 1 days);
+        bytes32 policyId = keccak256(abi.encode(block.chainid, address(enforcer), signerAddr, beta, ACTION_DIGEST, uint64(1), expiresAt));
+        KarmaPolicyEnforcer.PolicyAuthorization memory auth = _authorization(policyId, 1, expiresAt);
+        bytes memory sig = _sign(SIGNER_PK, auth);
+
+        vm.expectEmit(true, true, true, true);
+        emit KarmaPolicyEnforcer.PolicyIssued(policyId, signerAddr, beta, ACTION_DIGEST, 100, 500, expiresAt, 1, POLICY_HASH);
+        address recoveredPrincipal = enforcer.issuePolicyWithSignature(auth, sig);
+
+        assertEq(recoveredPrincipal, signerAddr, "recovered principal must be the actual signer");
+        (address storedPrincipal,,,,,,,,,,) = enforcer.policies(policyId);
+        assertEq(storedPrincipal, signerAddr);
+    }
+
+    /// @dev No key can forge another key's authority: signing the exact same authorization with a
+    ///      DIFFERENT private key must recover to that key's own address, never to the address the
+    ///      test "intended" — this is the entire security property EIP-712 signing exists to give.
+    function test_IssuePolicyWithSignature_DifferentSignerRecoversDifferentPrincipal() public {
+        address signerAddr = vm.addr(SIGNER_PK);
+        address otherAddr = vm.addr(OTHER_PK);
+        uint64 expiresAt = uint64(block.timestamp + 1 days);
+        bytes32 policyId = keccak256(abi.encode(block.chainid, address(enforcer), otherAddr, beta, ACTION_DIGEST, uint64(1), expiresAt));
+        KarmaPolicyEnforcer.PolicyAuthorization memory auth = _authorization(policyId, 1, expiresAt);
+
+        bytes memory sigFromOther = _sign(OTHER_PK, auth);
+        address recovered = enforcer.issuePolicyWithSignature(auth, sigFromOther);
+
+        assertEq(recovered, otherAddr);
+        assertNotEq(recovered, signerAddr);
+    }
+
+    /// @dev Submitting a signature alongside a TAMPERED authorization (any field changed after
+    ///      signing) must not authenticate as the original signer — the recovered address changes
+    ///      because the struct hash it's checked against changed, exactly like editing a paper
+    ///      contract after it's been signed doesn't make the new terms signed too.
+    function test_IssuePolicyWithSignature_TamperedFieldRecoversDifferentPrincipal() public {
+        address signerAddr = vm.addr(SIGNER_PK);
+        uint64 expiresAt = uint64(block.timestamp + 1 days);
+        bytes32 policyId = keccak256(abi.encode(block.chainid, address(enforcer), signerAddr, beta, ACTION_DIGEST, uint64(1), expiresAt));
+        KarmaPolicyEnforcer.PolicyAuthorization memory auth = _authorization(policyId, 1, expiresAt);
+        bytes memory sig = _sign(SIGNER_PK, auth);
+
+        // Attacker raises the cap after the signature was produced, keeping the same signature bytes.
+        auth.maxPerTransaction = 100_000;
+        address recovered = enforcer.issuePolicyWithSignature(auth, sig);
+        assertNotEq(recovered, signerAddr, "a tampered authorization must not recover as the original signer");
+    }
+
+    function test_IssuePolicyWithSignature_RevertIfPolicyIdAlreadyUsed() public {
+        address signerAddr = vm.addr(SIGNER_PK);
+        uint64 expiresAt = uint64(block.timestamp + 1 days);
+        bytes32 policyId = keccak256(abi.encode(block.chainid, address(enforcer), signerAddr, beta, ACTION_DIGEST, uint64(1), expiresAt));
+        KarmaPolicyEnforcer.PolicyAuthorization memory auth = _authorization(policyId, 1, expiresAt);
+        bytes memory sig = _sign(SIGNER_PK, auth);
+        enforcer.issuePolicyWithSignature(auth, sig);
+
+        vm.expectRevert(abi.encodeWithSelector(KarmaPolicyEnforcer.PolicyAlreadyExists.selector, policyId));
+        enforcer.issuePolicyWithSignature(auth, sig);
+    }
+
+    function test_IssuePolicyWithSignature_RevertOnMalformedSignatureLength() public {
+        uint64 expiresAt = uint64(block.timestamp + 1 days);
+        KarmaPolicyEnforcer.PolicyAuthorization memory auth = _authorization(_policyId(1), 1, expiresAt);
+        bytes memory garbage = hex"deadbeef";
+
+        vm.expectRevert();
+        enforcer.issuePolicyWithSignature(auth, garbage);
+    }
+
+    /// @dev A policy issued via signature is enforced identically to one issued directly — the
+    ///      two entry points share `_storePolicy` and `validateAndRecordExecution` doesn't know or
+    ///      care which one was used.
+    function test_IssuePolicyWithSignature_IsFullyEnforcedAfterward() public {
+        address signerAddr = vm.addr(SIGNER_PK);
+        uint64 expiresAt = uint64(block.timestamp + 1 days);
+        bytes32 policyId = keccak256(abi.encode(block.chainid, address(enforcer), signerAddr, beta, ACTION_DIGEST, uint64(1), expiresAt));
+        KarmaPolicyEnforcer.PolicyAuthorization memory auth = _authorization(policyId, 1, expiresAt);
+        enforcer.issuePolicyWithSignature(auth, _sign(SIGNER_PK, auth));
+
+        vm.prank(beta);
+        enforcer.validateAndRecordExecution(policyId, 80);
+
+        vm.prank(beta);
+        vm.expectRevert(abi.encodeWithSelector(KarmaPolicyEnforcer.PerTransactionLimitExceeded.selector, policyId, 150, 100));
+        enforcer.validateAndRecordExecution(policyId, 150);
     }
 }

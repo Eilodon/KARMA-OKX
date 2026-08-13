@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.24;
 
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 /// @title KarmaPolicyEnforcer — hard on-chain enforcement of a `KarmaPolicyIR` (AI Season build).
 /// @notice A principal issues a policy (per-transaction cap, cumulative exposure cap, expiry) for
 ///         a subject/action; the subject's own calls to `validateAndRecordExecution` are the only
@@ -14,23 +17,31 @@ pragma solidity ^0.8.24;
 ///         this contract has no dependency on the registry at all; the `KarmaPolicyIR` a policy
 ///         commits to is produced entirely off-chain (`src/lib/trust/policy/compiler.ts`).
 ///
-///         Two deliberate scope-cuts for this build, both documented rather than silently
-///         dropped:
-///          1. This merges what the full architecture proposal calls `KarmaPolicyRegistry`
-///             (commitment storage) and `KarmaPolicyEnforcer` (validation) into one contract.
-///             Splitting them is a compatible follow-up once this is proven, not a rewrite.
-///          2. `issuePolicy` is direct on-chain issuance (`msg.sender` IS the principal) rather
-///             than an EIP-712 signed policy submitted by a relayer — nothing in this repo's
-///             Solidity uses EIP-712 today, and building a correct typed-data flow from scratch
-///             under a hackathon deadline is real, riskable work for marginal benefit over the
-///             direct model, which the architecture proposal explicitly allows as an alternative.
-///             Domain/replay separation still holds: `policyId` is meant to be computed off-chain
-///             as `keccak256(abi.encode(block.chainid, address(this), principal, subject,
-///             actionDigest, nonce, expiresAt))` (see `src/lib/trust/policy/ir.ts` /
-///             `xlayer_policy.ts`), and this contract requires it unused before accepting it —
-///             a policy literally cannot be replayed onto a different chain, contract, principal,
-///             subject, action, or nonce and still resolve to the same `policyId`.
-contract KarmaPolicyEnforcer {
+///         One deliberate scope-cut for this build, documented rather than silently dropped:
+///         this merges what the full architecture proposal calls `KarmaPolicyRegistry`
+///         (commitment storage) and `KarmaPolicyEnforcer` (validation) into one contract.
+///         Splitting them is a compatible follow-up once this is proven, not a rewrite.
+///
+///         Two ways to issue a policy, both landing in the same `policies` mapping and both
+///         equally enforced by `validateAndRecordExecution` — the architecture proposal's own
+///         Section XXII: "Hai model đều được." `issuePolicy` is direct on-chain issuance
+///         (`msg.sender` IS the principal — no gas-less flow, but zero signature-verification
+///         surface). `issuePolicyWithSignature` recovers the principal from an EIP-712
+///         `PolicyAuthorization` signature instead (OpenZeppelin's `EIP712`/`ECDSA`, not a
+///         hand-rolled digest — this is exactly the class of code not worth reimplementing), so
+///         a principal can authorize a policy off-chain, for free, and let anyone (a relayer, the
+///         subject itself) submit it — composable in the way the plan prefers, per Section XXII:
+///         "Mình nghiêng về signed policy vì composable hơn."
+///
+///         Domain/replay separation holds two ways at once: the EIP-712 domain separator itself
+///         (name/version/chainId/verifyingContract, built into `_hashTypedDataV4`) binds a
+///         signature to this exact deployment, AND `policyId` — meant to be computed off-chain as
+///         `keccak256(abi.encode(block.chainid, address(this), principal, subject, actionDigest,
+///         nonce, expiresAt))` (see `src/lib/trust/policy/ir.ts` / `xlayer_policy.ts`) — is
+///         required unused by both entry points before either accepts it. A policy literally
+///         cannot be replayed onto a different chain, contract, principal, subject, action, or
+///         nonce and still resolve to the same `policyId`.
+contract KarmaPolicyEnforcer is EIP712 {
     struct Policy {
         address principal;
         address subject;
@@ -78,10 +89,31 @@ contract KarmaPolicyEnforcer {
     error PerTransactionLimitExceeded(bytes32 policyId, uint256 amount, uint256 maxPerTransaction);
     error CumulativeExposureExceeded(bytes32 policyId, uint256 attemptedTotal, uint256 maxCumulativeExposure);
 
-    /// @notice Issue a new policy. `msg.sender` is the principal (direct issuance — see the
-    ///         contract-level scope-cut #2 above). Reverts if `policyId` is already used, which
-    ///         is what makes replay across chain/contract/principal/subject/action/nonce
-    ///         impossible as long as the caller derives `policyId` the documented way.
+    /// @dev Field order/types here ARE the EIP-712 type string below — keep them in lockstep.
+    ///      `principal` is deliberately NOT a field: it's recovered from the signature itself,
+    ///      the same way a checking account doesn't need to print its own owner's name on a
+    ///      cheque for the signature to prove who wrote it.
+    struct PolicyAuthorization {
+        bytes32 policyId;
+        address subject;
+        bytes32 actionDigest;
+        uint256 maxPerTransaction;
+        uint256 maxCumulativeExposure;
+        uint64 expiresAt;
+        uint64 nonce;
+        bytes32 policyHash;
+    }
+
+    bytes32 private constant POLICY_AUTHORIZATION_TYPEHASH = keccak256(
+        "PolicyAuthorization(bytes32 policyId,address subject,bytes32 actionDigest,uint256 maxPerTransaction,uint256 maxCumulativeExposure,uint64 expiresAt,uint64 nonce,bytes32 policyHash)"
+    );
+
+    constructor() EIP712("KarmaPolicyEnforcer", "1") {}
+
+    /// @notice Issue a new policy. `msg.sender` is the principal (direct issuance). Reverts if
+    ///         `policyId` is already used, which is what makes replay across
+    ///         chain/contract/principal/subject/action/nonce impossible as long as the caller
+    ///         derives `policyId` the documented way.
     function issuePolicy(
         bytes32 policyId,
         address subject,
@@ -92,11 +124,64 @@ contract KarmaPolicyEnforcer {
         uint64 nonce,
         bytes32 policyHash
     ) external {
+        _storePolicy(policyId, msg.sender, subject, actionDigest, maxPerTransaction, maxCumulativeExposure, expiresAt, nonce, policyHash);
+    }
+
+    /// @notice Issue a new policy on behalf of whichever address signed `auth` as an EIP-712
+    ///         `PolicyAuthorization` — the principal never sends this transaction or pays its
+    ///         gas; `msg.sender` here can be a relayer, the subject itself, or anyone holding a
+    ///         validly-signed authorization. Reverts under the exact same `PolicyAlreadyExists`/
+    ///         `InvalidExpiry` conditions as `issuePolicy`; an invalid/malformed signature reverts
+    ///         with OpenZeppelin `ECDSA`'s own error (`ECDSAInvalidSignature` and friends), not a
+    ///         silently-wrong recovered address.
+    function issuePolicyWithSignature(
+        PolicyAuthorization calldata auth,
+        bytes calldata signature
+    ) external returns (address principal) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                POLICY_AUTHORIZATION_TYPEHASH,
+                auth.policyId,
+                auth.subject,
+                auth.actionDigest,
+                auth.maxPerTransaction,
+                auth.maxCumulativeExposure,
+                auth.expiresAt,
+                auth.nonce,
+                auth.policyHash
+            )
+        );
+        principal = ECDSA.recoverCalldata(_hashTypedDataV4(structHash), signature);
+
+        _storePolicy(
+            auth.policyId,
+            principal,
+            auth.subject,
+            auth.actionDigest,
+            auth.maxPerTransaction,
+            auth.maxCumulativeExposure,
+            auth.expiresAt,
+            auth.nonce,
+            auth.policyHash
+        );
+    }
+
+    function _storePolicy(
+        bytes32 policyId,
+        address principal,
+        address subject,
+        bytes32 actionDigest,
+        uint256 maxPerTransaction,
+        uint256 maxCumulativeExposure,
+        uint64 expiresAt,
+        uint64 nonce,
+        bytes32 policyHash
+    ) internal {
         if (policies[policyId].principal != address(0)) revert PolicyAlreadyExists(policyId);
         if (expiresAt <= block.timestamp) revert InvalidExpiry(policyId, expiresAt, uint64(block.timestamp));
 
         policies[policyId] = Policy({
-            principal: msg.sender,
+            principal: principal,
             subject: subject,
             actionDigest: actionDigest,
             maxPerTransaction: maxPerTransaction,
@@ -110,7 +195,7 @@ contract KarmaPolicyEnforcer {
         });
 
         emit PolicyIssued(
-            policyId, msg.sender, subject, actionDigest, maxPerTransaction, maxCumulativeExposure, expiresAt, nonce, policyHash
+            policyId, principal, subject, actionDigest, maxPerTransaction, maxCumulativeExposure, expiresAt, nonce, policyHash
         );
     }
 

@@ -43,7 +43,8 @@ zero setup: **[`docs/media/xlayer_policy_demo.html`](docs/media/xlayer_policy_de
 the real compiler kernel client-side, in your browser — no wallet, no server, no API key needed
 to see a `policyHash` come out the other end. See
 [`docs/AI_SEASON_HACKATHON_CHECKLIST.md`](docs/AI_SEASON_HACKATHON_CHECKLIST.md) for exactly
-what's live, what's tested (57 passing tests across the compiler kernel, the contract, and the MCP
+what's live, what's tested (63 passing tests across the compiler kernel, the contract — including
+6 EIP-712 signed-policy tests and a 256-run fuzz test — and the MCP
 tools), and the two runnable demo scripts (`pnpm demo:xlayer:policy-lifecycle`,
 `pnpm demo:xlayer:task-risk`). Architecture source: `src/lib/trust/` (evidence → risk → policy),
 `contracts/policy/KarmaPolicyEnforcer.sol` (enforcement), `src/plugins/policy.tool.ts` (MCP

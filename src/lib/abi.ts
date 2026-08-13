@@ -223,6 +223,26 @@ export const karmaPolicyEnforcerAbi = [
   },
   { type: "function", name: "revokePolicy", stateMutability: "nonpayable", inputs: [{ name: "policyId", type: "bytes32" }], outputs: [] },
   {
+    type: "function", name: "issuePolicyWithSignature", stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "auth", type: "tuple",
+        components: [
+          { name: "policyId", type: "bytes32" },
+          { name: "subject", type: "address" },
+          { name: "actionDigest", type: "bytes32" },
+          { name: "maxPerTransaction", type: "uint256" },
+          { name: "maxCumulativeExposure", type: "uint256" },
+          { name: "expiresAt", type: "uint64" },
+          { name: "nonce", type: "uint64" },
+          { name: "policyHash", type: "bytes32" },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "principal", type: "address" }],
+  },
+  {
     type: "function", name: "validateAndRecordExecution", stateMutability: "nonpayable",
     inputs: [{ name: "policyId", type: "bytes32" }, { name: "amount", type: "uint256" }],
     outputs: [{ name: "newCumulativeSpent", type: "uint256" }],
@@ -249,6 +269,23 @@ export const karmaPolicyEnforcerAbi = [
     { name: "policyId", type: "bytes32", indexed: true },
     { name: "principal", type: "address", indexed: true },
   ] },
+  // ── Inherited from OpenZeppelin's EIP712 (ERC-5267 introspection) — not hand-written policy
+  //    logic, but part of the deployed contract's real public surface, so the drift guard must
+  //    see them too. ──────────────────────────────────────────────────────────────────────────
+  { type: "event", name: "EIP712DomainChanged", inputs: [] },
+  {
+    type: "function", name: "eip712Domain", stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "fields", type: "bytes1" },
+      { name: "name", type: "string" },
+      { name: "version", type: "string" },
+      { name: "chainId", type: "uint256" },
+      { name: "verifyingContract", type: "address" },
+      { name: "salt", type: "bytes32" },
+      { name: "extensions", type: "uint256[]" },
+    ],
+  },
 
   { type: "error", name: "PolicyAlreadyExists", inputs: [{ name: "policyId", type: "bytes32" }] },
   { type: "error", name: "InvalidExpiry", inputs: [{ name: "policyId", type: "bytes32" }, { name: "expiresAt", type: "uint64" }, { name: "nowTs", type: "uint64" }] },
@@ -259,4 +296,11 @@ export const karmaPolicyEnforcerAbi = [
   { type: "error", name: "NotPrincipal", inputs: [{ name: "policyId", type: "bytes32" }, { name: "caller", type: "address" }] },
   { type: "error", name: "PerTransactionLimitExceeded", inputs: [{ name: "policyId", type: "bytes32" }, { name: "amount", type: "uint256" }, { name: "maxPerTransaction", type: "uint256" }] },
   { type: "error", name: "CumulativeExposureExceeded", inputs: [{ name: "policyId", type: "bytes32" }, { name: "attemptedTotal", type: "uint256" }, { name: "maxCumulativeExposure", type: "uint256" }] },
+  // Inherited from OpenZeppelin's ECDSA (signature recovery) and ShortStrings (used internally by
+  // EIP712 to store "KarmaPolicyEnforcer"/"1" efficiently) — reachable reverts, not hand-written.
+  { type: "error", name: "ECDSAInvalidSignature", inputs: [] },
+  { type: "error", name: "ECDSAInvalidSignatureLength", inputs: [{ name: "length", type: "uint256" }] },
+  { type: "error", name: "ECDSAInvalidSignatureS", inputs: [{ name: "s", type: "bytes32" }] },
+  { type: "error", name: "InvalidShortString", inputs: [] },
+  { type: "error", name: "StringTooLong", inputs: [{ name: "str", type: "string" }] },
 ] as const;
