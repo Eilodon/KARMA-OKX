@@ -7,8 +7,9 @@ plan T4–T5).
 
 ```
 circuits/
-  src/agent_credential.circom          real circuit (T4)
-  src/reputation_aggregation.circom    real circuit (T1.1)
+  src/agent_credential.circom          real circuit (T4, Stellar track)
+  src/reputation_aggregation.circom    real circuit (T1.1, Stellar track)
+  src/policy_credential.circom         real circuit (AI Season, X Layer/EVM track)
   dummy/multiplier.circom              toolchain-validation circuit
   test/                                end-to-end snarkjs pipelines (compile → setup → prove → verify)
   scripts/install-toolchain.sh         downloads circom binary + installs snarkjs locally
@@ -26,11 +27,16 @@ cd circuits/
 make toolchain     # downloads circom v2.2.3 + installs snarkjs locally (idempotent)
 make dummy         # validates the toolchain end-to-end (multiplier circuit, ~5 s)
 make credential    # builds AgentCredentialProof + runs happy + 4 negative tests (~2 min)
+make policy-credential   # builds PolicyCredentialProof + happy/negative/anti-correlation (~2 min)
 ```
 
 `make credential` is the deliverable for T4 — its output is the `.zkey`,
 `verification_key.json`, and the witness/proof artefacts the Soroban verifier
 (T5) consumes.
+
+`make policy-credential` is the deliverable for the AI Season "Private Underwriting" track — see
+below for the circuit itself, and `contracts/policy/PolicyCredentialVerifier.sol` for the EVM
+Solidity verifier (Foundry-tested against a real proof in `test/PolicyCredentialVerifier.t.sol`).
 
 ## Circuit — `AgentCredentialProof`
 
@@ -94,3 +100,51 @@ script + pattern applies to `reputation_aggregation_verifier` from `make repagg`
 output. See `contracts-soroban/agent_credential_verifier/README.md` for the exact
 point-encoding spec (`BE(x) || BE(y)` for G1; `BE(c1) || BE(c0)` per `Fp2`
 coordinate for G2).
+
+## Circuit — `PolicyCredentialProof` (AI Season, X Layer/EVM track)
+
+"Private Underwriting" per `KARMA_OKX_MASTER_IMPLEMENTATION_PLAN.md` Section XXXIX-XLII: same
+proven Poseidon-commitment + range-check + Merkle-membership skeleton as `AgentCredentialProof`
+above (kept, unmodified — this is a NEW, separate circuit, not a breaking change to that one), with
+one deliberate difference that closes a gap Section XL calls out by name: `AgentCredentialProof`'s
+nullifier is `Poseidon(credentialSecret, skillId)` — bound only to *which skill*, so the same
+credential produces the same nullifier across every policy request against that skill, making
+different underwriting requests for the same agent linkable to each other. `PolicyCredentialProof`
+binds the nullifier to the specific request instead:
+
+| Public input           | Meaning                                                                    |
+|-------------------------|-----------------------------------------------------------------------------|
+| `policyRequestId`       | identifies the one specific underwriting request this proof is for         |
+| `domain`                | principal/subject binding context (Section XL's third nullifier input)     |
+| `minReputation`         | the policy profile's required reputation threshold                        |
+| `nullifier`             | `Poseidon(credentialSecret, policyRequestId, domain)` — policy-context-bound |
+| `credentialCommitment`  | `Poseidon(credentialSecret, reputationScore)` — same binding role as above |
+| `issuerRoot`            | issuer-published merkle root the commitment is a leaf under               |
+
+Private inputs are identical to `AgentCredentialProof`'s: `credentialSecret`, `reputationScore`,
+`pathElements[8]`, `pathIndices[8]`.
+
+`test/policy_credential.test.mjs` proves this property directly, not just by inspection: the SAME
+`credentialSecret`/`reputationScore`/commitment/tree, but two DIFFERENT `policyRequestId`s, produce
+two DIFFERENT nullifiers — an observer watching on-chain nullifiers cannot tell two policy requests
+came from the same underlying credential.
+
+### EVM verifier (not Soroban BN254-packing — this track targets X Layer)
+
+```bash
+cd circuits/
+make policy-credential
+node_modules/.bin/snarkjs zkey export solidityverifier \
+  build/policy_credential/policy_credential_0001.zkey \
+  /tmp/PolicyCredentialVerifier.sol
+```
+
+`contracts/policy/PolicyCredentialVerifier.sol` in the repo root is exactly this output (contract
+renamed from snarkjs's default `Groth16Verifier`) — a standard Groth16 Solidity verifier calling
+the BN254 pairing precompile directly (`ecPairing`, precompile address `0x08`), the natural EVM
+path, unlike the Stellar track's native-host-function packing above.
+`test/PolicyCredentialVerifier.t.sol` feeds it the literal proof/public-signals
+`policy_credential.test.mjs`'s happy path generated — a real ZK proof verified by a real EVM
+precompile call, not a mock — plus three negative cases (tampered public signal, wrong
+`policyRequestId`, mangled curve point). If `policy_credential.circom` or its trusted setup ever
+changes, both the `.sol` file and the pinned test values must be regenerated together.

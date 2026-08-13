@@ -49,7 +49,9 @@ tools), and the two runnable demo scripts (`pnpm demo:xlayer:policy-lifecycle`,
 `pnpm demo:xlayer:task-risk`). Architecture source: `src/lib/trust/` (evidence → risk → policy),
 `contracts/policy/KarmaPolicyEnforcer.sol` (enforcement), `src/plugins/policy.tool.ts` (MCP
 surface: `karma_classify_task_risk`, `karma_quote_policy`, `karma_issue_policy`,
-`karma_execute_with_policy`).
+`karma_execute_with_policy`). "Private Underwriting" — proving a threshold like `reputation >= 80`
+without revealing the actual score — is a real, EVM-verified Groth16 circuit, not a description:
+`circuits/src/policy_credential.circom` / `contracts/policy/PolicyCredentialVerifier.sol`.
 
 ---
 

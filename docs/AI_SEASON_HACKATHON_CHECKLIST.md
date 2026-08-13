@@ -185,16 +185,48 @@ review cycle needed once deployed and wired to a live env.
       EIP-712 integration uses, not a hand-rolled digest.
 - [x] `signPolicyAuthorization`/`issuePolicyWithSignature` in `src/lib/xlayer_policy.ts` (§2).
 
-## 8. Not done — explicitly cut for this build (documented, not forgotten)
+## 8. ZK `PolicyCredentialProof` — DONE, real proof verified on a real EVM precompile
 
-Recursive delegation/Contract Graph, cross-chain evidence dedup, ZK `PolicyCredentialProof`, EVM
-panel-arbitration port, an event indexer. None of these gate AI Season eligibility or the judging
-criteria (application of AI, innovation, product completeness, user value, X Layer integration,
-growth potential, ecosystem contribution) — they're legitimate future work once this kernel is
-proven live. (Concurrency fuzzing for Exposure Conservation and EIP-712 signed policies, both
-originally on this list, are now done — see §2/§7.)
+"Private Underwriting" per the plan's Section XXXIX-XLII, closing the exact gap Section XL names:
+`agent_credential.circom`'s existing `AgentCredentialProof` nullifier
+(`Poseidon(credentialSecret, skillId)`) is bound only to *which skill*, so the same credential
+produces the same nullifier across every policy request against that skill — different
+underwriting requests for the same agent are linkable to each other. Not a hypothetical fix —
+built, compiled, proved, and verified end-to-end this session:
 
-## 9. Submission — owned by the user, not this agent session
+- [x] `circuits/src/policy_credential.circom` — same proven Poseidon-commitment + range-check +
+      Merkle-membership skeleton as `AgentCredentialProof` (kept unmodified, backward-compatible),
+      nullifier changed to `Poseidon(credentialSecret, policyRequestId, domain)` — three inputs,
+      exactly Section XL's own list.
+- [x] `circuits/test/policy_credential.test.mjs` — full `circom` → Groth16 trusted setup → prove →
+      verify pipeline, run for real this session (not simulated): happy path, 4 negative cases
+      (bad commitment/low reputation/wrong root/tampered nullifier), and the property that's the
+      actual point of this circuit — **the same credential, two different `policyRequestId`s,
+      produce two different, unlinkable nullifiers** — asserted directly, not just claimed.
+- [x] `contracts/policy/PolicyCredentialVerifier.sol` — real `snarkjs zkey export
+      solidityverifier` output (renamed contract, otherwise unmodified generated code), the
+      EVM/X-Layer-native path (BN254 pairing precompile, `ecPairing` at `0x08`) rather than the
+      Stellar track's native-host-function byte-packing.
+- [x] `test/PolicyCredentialVerifier.t.sol` — 4 Foundry tests feeding the verifier the **literal
+      proof bytes** the circuit test suite generated (via `snarkjs zkey export soliditycalldata`)
+      — a genuine off-chain-generated ZK proof, verified by a real EVM precompile call, zero
+      mocking on either side. `test_VerifiesRealProof_FromCircuitTestSuite` is the actual
+      happy-path proof; three negative tests (tampered public signal, wrong `policyRequestId`,
+      mangled curve point) confirm the verifier actually rejects, not just accepts everything.
+
+Verify: `cd circuits && make policy-credential` (installs `circom`/`snarkjs` if needed, ~2 min),
+then `forge test --match-contract PolicyCredentialVerifierTest -vv` from the repo root.
+
+## 9. Not done — explicitly cut for this build (documented, not forgotten)
+
+Recursive delegation/Contract Graph, cross-chain evidence dedup, EVM panel-arbitration port, an
+event indexer. None of these gate AI Season eligibility or the judging criteria (application of
+AI, innovation, product completeness, user value, X Layer integration, growth potential,
+ecosystem contribution) — they're legitimate future work once this kernel is proven live.
+(Concurrency fuzzing for Exposure Conservation, EIP-712 signed policies, and ZK
+`PolicyCredentialProof` — all three originally on this list — are now done, see §2/§7/§8.)
+
+## 10. Submission — owned by the user, not this agent session
 
 Per explicit instruction this session: **X account, video, and the Google Form are the user's own
 responsibility**, not something to automate here. What this checklist owes that process:
@@ -202,7 +234,9 @@ responsibility**, not something to automate here. What this checklist owes that 
 - A working, testable story: kernel (§1) proven by 36 passing property/unit tests, contract (§2)
   proven by 20 passing Foundry tests (including a 256-run fuzz test and 6 EIP-712 signature
   tests), MCP surface (§3) proven by 7 passing tests, two named demo scripts (§4) ready to run the
-  moment a funded key exists, and a live, interactive, Playwright-verified demo webpage (§6) that
-  needs no wallet at all to show the compiler actually working.
+  moment a funded key exists, a live, interactive, Playwright-verified demo webpage (§6) that
+  needs no wallet at all to show the compiler actually working, and a genuine ZK circuit (§8) —
+  real proof, real EVM pairing-precompile verification, real anti-correlation property — not a
+  circuit that exists only as a plan-document description.
 - The AI-RWA framing is not a stretch: `fetchUsTreasuryYield`/`fetchBtcUsdPrice` (real, live,
   keyless public APIs, not stubs) already feed both demo scripts' narrative context.
