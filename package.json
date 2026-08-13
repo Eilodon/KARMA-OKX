@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
+    "build:human-payer-page": "esbuild src/web/casper_human_payer_entry.ts --bundle --minify --format=esm --platform=browser --outfile=docs/media/casper_human_payer.bundle.js",
     "start": "node dist/index.js",
     "test": "vitest run src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -31,7 +32,19 @@
     "demo:casper": "tsx src/scripts/demo_casper_e2e.ts",
     "demo:casper:composition": "tsx src/scripts/demo_casper_skill_composition.ts",
     "demo:casper:x402": "tsx src/scripts/demo_casper_x402_live.ts",
+    "demo:casper:x402:settlement": "tsx src/scripts/demo_casper_x402_settlement_live.ts",
+    "demo:casper:x402:allowance-streaming": "tsx src/scripts/demo_casper_x402_allowance_streaming.ts",
+    "demo:casper:full-lifecycle": "tsx src/scripts/demo_casper_full_job_lifecycle.ts",
+    "demo:casper:rwa-lifecycle": "tsx src/scripts/demo_casper_rwa_oracle_lifecycle_live.ts",
+    "demo:casper:courtroom": "tsx src/scripts/demo_casper_courtroom.ts",
+    "demo:casper:panel-dispute": "tsx src/scripts/demo_casper_panel_dispute.ts",
+    "demo:casper:panel-governance": "tsx src/scripts/demo_casper_panel_governance.ts",
+    "demo:casper:streaming": "tsx src/scripts/demo_casper_streaming_installments.ts",
+    "demo:casper:independent-integrator": "tsx src/scripts/demo_casper_independent_integrator.ts",
+    "demo:casper:cross-chain-rep-governance": "tsx src/scripts/demo_casper_cross_chain_rep_governance.ts",
+    "register:rwa-oracle-skill": "tsx src/scripts/register_rwa_oracle_skill.ts",
     "export:dispute-packet": "tsx src/scripts/export_dispute_audit_packet.ts",
+    "card:png": "tsx src/scripts/export_status_card_png.ts",
     "demo:stellar": "tsx src/scripts/demo_stellar_zk.ts",
     "demo:stellar:x402": "tsx src/scripts/demo_stellar_x402_live.ts",
     "demo:llm-agent": "tsx src/scripts/demo_llm_agent_reasoning.ts",
@@ -46,7 +59,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
-    "@aws-sdk/client-kms": "^3.1088.0",
+    "@aws-sdk/client-kms": "^3.1089.0",
     "@casper-ecosystem/casper-eip-712": "^1.2.1",
     "@cfworker/json-schema": "^4.1.1",
     "@modelcontextprotocol/express": "^2.0.0-beta.4",
@@ -58,7 +71,7 @@
     "@opentelemetry/sdk-node": "^0.220.0",
     "@opentelemetry/semantic-conventions": "^1.30.0",
     "@stellar/stellar-sdk": "16.0.1",
-    "@terminal3/t3n-sdk": "3.10.1",
+    "@terminal3/t3n-sdk": "4.14.0",
     "@x402/core": "^2.17.0",
     "@x402/evm": "^2.17.0",
     "@x402/stellar": "^2.16.0",
@@ -79,9 +92,11 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@openzeppelin/contracts": "^5.6.1",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.0",
+    "esbuild": "^0.28.1",
     "eslint": "^10.6.0",
     "eslint-plugin-n": "^18.2.1",
     "eslint-plugin-security": "^4.0.1",
@@ -99,7 +114,8 @@
       "underscore@<=1.13.7": "^1.13.8",
       "axios@<1.18.0": "^1.18.1",
       "fast-uri@<3.1.4": "^3.1.4",
-      "@hono/node-server@<2.0.5": "^2.0.5"
+      "@hono/node-server@<2.0.5": "^2.0.5",
+      "brace-expansion@<=5.0.7": "^5.0.8"
     }
   }
 }
