@@ -193,4 +193,68 @@ contract KarmaPolicyEnforcerTest is Test {
         assertEq(cumulativeSpent, 60);
         assertTrue(revoked);
     }
+
+    // ── Fuzz: Exposure Conservation (master plan Section XXVII/LXXVIII) ────────────────────────
+    //
+    // "Available = Limit - Reserved - Committed", asserted after every call across a random
+    // sequence, not just hand-picked examples — this repo had zero Solidity fuzz tests before
+    // this one (confirmed by a prior audit pass: none of the existing `test/*.t.sol` files
+    // parameterize a test function, so Foundry's fuzzer never actually ran on any of them).
+    // `maxPerTransaction` is set far above every fuzzed amount so this isolates the CUMULATIVE
+    // cap specifically, not the per-tx cap already covered by
+    // `test_ValidateAndRecordExecution_RevertWhenPerTransactionCapExceeded`.
+
+    function testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence(uint256[12] memory rawAmounts) public {
+        bytes32 policyId = _policyId(1);
+        uint256 cap = 1_000;
+        _issue(policyId, 1_000_000, cap, uint64(block.timestamp + 1 days), 1);
+
+        uint256 accepted = 0;
+        for (uint256 i = 0; i < rawAmounts.length; i++) {
+            // Deliberately allow amounts both well under and well over the remaining headroom —
+            // the fuzzer should hit both "clearly fine" and "clearly over" without being told.
+            uint256 amount = bound(rawAmounts[i], 0, cap * 2);
+
+            vm.prank(beta);
+            if (accepted + amount > cap) {
+                vm.expectRevert();
+                enforcer.validateAndRecordExecution(policyId, amount);
+                (,,,,, uint256 spentAfterRevert,,,,,) = enforcer.policies(policyId);
+                assertEq(spentAfterRevert, accepted, "a reverted attempt must not move cumulativeSpent at all");
+            } else {
+                enforcer.validateAndRecordExecution(policyId, amount);
+                accepted += amount;
+                (,,,,, uint256 spentAfterAccept,,,,,) = enforcer.policies(policyId);
+                assertEq(spentAfterAccept, accepted, "an accepted attempt must add exactly `amount`, no more, no less");
+            }
+
+            (,,,,, uint256 spentNow,,,,,) = enforcer.policies(policyId);
+            assertLe(spentNow, cap, "cumulativeSpent must never exceed maxCumulativeExposure, at any point");
+        }
+    }
+
+    /// @dev The "two concurrent reservations racing for the same budget" scenario (plan's own
+    ///      worked example: "Parent remaining = 10. Child A wants 8. Child B wants 8. Không được:
+    ///      A sees 10 -> okay. B sees 10 -> okay. mà tổng 16.") has no true concurrency on a
+    ///      single EVM chain — a sequencer/miner always serializes transactions within a block,
+    ///      so this test makes that guarantee explicit rather than assumed: two calls landing in
+    ///      the SAME block (no `vm.roll`/`vm.warp` between them, which is Foundry's default) each
+    ///      individually satisfy the per-tx cap, together would exceed the cumulative cap, and
+    ///      the second one to execute correctly reverts against state the first one already
+    ///      updated — exactly the atomicity a separate off-chain reservation ledger would have to
+    ///      work much harder to guarantee.
+    function test_TwoSameBlockAttempts_SecondSeesFirstsUpdatedState() public {
+        bytes32 policyId = _policyId(1);
+        _issue(policyId, 8, 10, uint64(block.timestamp + 1 days), 1);
+
+        vm.prank(beta);
+        enforcer.validateAndRecordExecution(policyId, 8); // Child A: within both caps.
+
+        vm.prank(beta);
+        vm.expectRevert(abi.encodeWithSelector(KarmaPolicyEnforcer.CumulativeExposureExceeded.selector, policyId, 16, 10));
+        enforcer.validateAndRecordExecution(policyId, 8); // Child B: sees cumulativeSpent=8, not 0 — reverts, not 16.
+
+        (,,,,, uint256 cumulativeSpent,,,,,) = enforcer.policies(policyId);
+        assertEq(cumulativeSpent, 8, "only Child A's spend was ever recorded - no double-count");
+    }
 }

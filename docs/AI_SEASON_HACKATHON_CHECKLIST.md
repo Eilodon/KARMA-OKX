@@ -50,8 +50,13 @@ actually prove:
 - [x] `TaskRiskClassifier` tests — `src/__tests__/task_risk_classifier.test.ts`, 8 tests including
       a prompt-injection case (attacker text embedded in a free-text field never reaches an enum
       the compiler branches on).
+- [x] `policyHash`/`evidenceRoot`/`taskRiskHash` hashing is a self-contained SHA-256
+      (`src/lib/canonical_hash.ts`), not `node:crypto` — pinned against `node:crypto` itself via a
+      300-run property test plus block-boundary/UTF-8 edge cases
+      (`src/__tests__/canonical_hash.test.ts`, 16 tests). Deliberate: this is what lets the
+      compiler run **client-side, in a browser**, with no server round-trip (§6).
 
-Verify: `pnpm exec vitest run src/__tests__/policy_compiler.test.ts src/__tests__/task_risk_classifier.test.ts`
+Verify: `pnpm exec vitest run src/__tests__/policy_compiler.test.ts src/__tests__/task_risk_classifier.test.ts src/__tests__/canonical_hash.test.ts`
 
 ## 2. X Layer hard enforcement — contract DONE, deploy NEEDS A HUMAN
 
@@ -60,9 +65,15 @@ Verify: `pnpm exec vitest run src/__tests__/policy_compiler.test.ts src/__tests_
       see the contract's own header comment for why), custom errors matching the plan's Section
       CII rejection-code vocabulary literally (`PerTransactionLimitExceeded`,
       `CumulativeExposureExceeded`, `PolicyExpired`, `PolicyRevoked`, ...).
-- [x] `test/KarmaPolicyEnforcer.t.sol` — 12 Foundry tests, all passing (`forge test --match-contract
+- [x] `test/KarmaPolicyEnforcer.t.sol` — 14 Foundry tests, all passing (`forge test --match-contract
       KarmaPolicyEnforcerTest`), directly covering Definition-of-Done Scenario D (hard cap → revert)
-      and Scenario H-style "revocation doesn't rewrite already-recorded spend."
+      and Scenario H-style "revocation doesn't rewrite already-recorded spend." Includes
+      `testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence` — a genuine 256-run Foundry
+      fuzz test (this repo had **zero** parameterized/fuzzed Solidity tests before this one —
+      every existing `test/*.t.sol` file takes no arguments, so Foundry's fuzzer never ran on any
+      of them) proving Section XXVII's "Available = Limit - Reserved - Committed" invariant holds
+      across random call sequences, plus an explicit same-block "two reservations race for the
+      same budget" test showing the second call correctly sees the first's already-updated state.
 - [x] `src/lib/abi.ts` (`karmaPolicyEnforcerAbi`) + structural drift-guard test extended in
       `src/__tests__/karma_contract.test.ts`.
 - [x] `src/lib/xlayer_policy.ts` — TS read/write binding, copied skeleton-for-skeleton from
@@ -117,22 +128,52 @@ review cycle needed once deployed and wired to a live env.
 - [x] `canonicalize`/`sha256Hex` deduplicated into `src/lib/canonical_hash.ts`, shared by both the
       RWA receipt module and the policy compiler's `policyHash`.
 
-## 6. Not done — explicitly cut for this build (documented, not forgotten)
+## 6. Demo webpage — DONE, live-verified in a real browser (Playwright)
 
-Recursive delegation/Contract Graph, cross-chain evidence dedup, ZK `PolicyCredentialProof`, full
-reserve/commit/settle exposure ledger with concurrency fuzzing, EVM panel-arbitration port, an
-event indexer, EIP-712 signed policies. None of these gate AI Season eligibility or the judging
-criteria (application of AI, innovation, product completeness, user value, X Layer integration,
-growth potential, ecosystem contribution) — they're legitimate future work once this kernel is
-proven live.
+- [x] `docs/media/xlayer_policy_demo.html` + `src/web/xlayer_policy_demo_entry.ts`
+      (`pnpm run build:xlayer-policy-demo-page`) — same esbuild/browser-bundle convention as
+      `casper_human_payer.html`. Two independent modes:
+      1. **Quote mode (no wallet needed)**: runs the real `compilePolicy` kernel entirely
+         client-side — same code the MCP tools and demo scripts use, not a reimplementation —
+         producing a real `policyHash` in the visitor's own browser. Verified live via Playwright
+         this session: compiling Alpha's low-risk quote produced
+         `policyHash=0xf634d9…c4883634e` with the exact expected rule trace
+         (`RULE_001`→`RULE_120 evidence_tier_strong`); switching to the high-risk preset and
+         recompiling correctly tightened terms (`RULE_211`/`RULE_240`/`RULE_301`, evaluator
+         NONE→PANEL, cap cut in half) and rendered a live terms-diff table. Malformed risk JSON
+         and "no wallet installed" both fail with a clear on-page message, not a console crash —
+         also verified live.
+      2. **On-chain mode (needs a wallet + deployed contract)**: `window.ethereum` via viem's
+         `custom()` transport — `issuePolicy`/`validateAndRecordExecution` against a
+         user-supplied `KarmaPolicyEnforcer` address, decoding reverts through the same
+         `policy_rejection.ts` vocabulary `policy.tool.ts` uses server-side.
+- [x] `src/lib/canonical_hash.ts`'s `node:crypto` dependency was replaced with a self-contained
+      SHA-256 specifically to make this possible (esbuild `--platform=browser` can't bundle
+      `node:crypto`) — see §1.
+- [x] `src/lib/policy_rejection.ts` extracted from `xlayer_policy.ts` (pure, no `process.env`
+      access) so the browser bundle can decode contract reverts without pulling in
+      `xlayer.ts`'s env-reading chain-client singletons, which would throw `process is not
+      defined` in a browser.
 
-## 7. Submission — owned by the user, not this agent session
+## 7. Not done — explicitly cut for this build (documented, not forgotten)
+
+Recursive delegation/Contract Graph, cross-chain evidence dedup, ZK `PolicyCredentialProof`, EVM
+panel-arbitration port, an event indexer, EIP-712 signed policies (direct issuance is used
+instead — see `KarmaPolicyEnforcer.sol`'s header). None of these gate AI Season eligibility or the
+judging criteria (application of AI, innovation, product completeness, user value, X Layer
+integration, growth potential, ecosystem contribution) — they're legitimate future work once this
+kernel is proven live. (Concurrency fuzzing for Exposure Conservation, originally on this list,
+is now done — see §2.)
+
+## 8. Submission — owned by the user, not this agent session
 
 Per explicit instruction this session: **X account, video, and the Google Form are the user's own
 responsibility**, not something to automate here. What this checklist owes that process:
 
-- A working, testable story: kernel (§1) proven by 20 passing property/unit tests, contract (§2)
-  proven by 12 passing Foundry tests, MCP surface (§3) proven by 7 passing tests, two named demo
-  scripts (§4) ready to run the moment a funded key exists.
+- A working, testable story: kernel (§1) proven by 36 passing property/unit tests, contract (§2)
+  proven by 14 passing Foundry tests (including a 256-run fuzz test), MCP surface (§3) proven by
+  7 passing tests, two named demo scripts (§4) ready to run the moment a funded key exists, and a
+  live, interactive, Playwright-verified demo webpage (§6) that needs no wallet at all to show the
+  compiler actually working.
 - The AI-RWA framing is not a stretch: `fetchUsTreasuryYield`/`fetchBtcUsdPrice` (real, live,
   keyless public APIs, not stubs) already feed both demo scripts' narrative context.

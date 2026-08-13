@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KARMA — Economic Trust Compiler (X Layer AI Season)</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 16px; color: #1a1a1a; }
+      h1 { font-size: 1.5rem; margin-bottom: 4px; }
+      h2 { font-size: 1.1rem; margin-top: 32px; border-bottom: 2px solid #eee; padding-bottom: 4px; }
+      .note { background: #f4f4f4; border-left: 4px solid #888; padding: 12px 16px; margin: 16px 0; font-size: 0.92rem; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+      label { display: block; margin-top: 10px; font-weight: 600; font-size: 0.85rem; }
+      input, textarea { width: 100%; box-sizing: border-box; padding: 7px; margin-top: 3px; font-family: monospace; font-size: 0.85rem; }
+      textarea { height: 160px; }
+      button { margin-top: 14px; margin-right: 8px; padding: 9px 16px; font-size: 0.95rem; cursor: pointer; }
+      button.secondary { background: #eee; }
+      #status { white-space: pre-wrap; margin: 14px 0; font-family: monospace; font-size: 0.85rem; color: #444; background: #fafafa; padding: 10px; border-radius: 4px; min-height: 1.2em; }
+      #rule-trace { white-space: pre-wrap; font-family: monospace; font-size: 0.82rem; background: #f8f8f8; padding: 12px; border-radius: 4px; }
+      #terms-card { font-family: monospace; font-size: 0.9rem; background: #eef7ee; padding: 12px; border-radius: 4px; line-height: 1.7; }
+      #policy-hash { font-family: monospace; font-size: 0.85rem; word-break: break-all; background: #fff3cd; padding: 8px 10px; border-radius: 4px; }
+      #terms-diff table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+      #terms-diff td, #terms-diff th { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+      #connected { margin-top: 8px; font-family: monospace; font-size: 0.85rem; }
+      .presets button { padding: 6px 12px; font-size: 0.82rem; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <h1>KARMA — Economic Trust Compiler</h1>
+      <div class="note">
+        Everything under "1. Mandate + Evidence" and "2. Task risk" compiles to a real
+        <code>KarmaPolicyIR</code> — including <code>policyHash</code> — entirely in your browser,
+        via the same deterministic compiler kernel (<code>src/lib/trust/policy/compiler.ts</code>)
+        the MCP tools and server-side demo scripts use. No API key, no server round-trip needed to
+        get a quote. "3. Enforce on X Layer" needs a wallet (MetaMask or similar) and a deployed
+        <code>KarmaPolicyEnforcer</code> address — the reject reasons it shows
+        (<code>PER_TRANSACTION_LIMIT_EXCEEDED</code>, etc.) come straight from the contract's own
+        revert, not a simulation. See
+        <a href="../AI_SEASON_HACKATHON_CHECKLIST.md">docs/AI_SEASON_HACKATHON_CHECKLIST.md</a>.
+      </div>
+
+      <h2>1. Mandate + Evidence</h2>
+      <div class="presets">
+        <button class="secondary" id="load-alpha">Load Alpha (strong evidence)</button>
+        <button class="secondary" id="load-beta">Load Beta (thin evidence)</button>
+      </div>
+      <div class="grid">
+        <div>
+          <label for="principal-address">Principal address</label>
+          <input id="principal-address" placeholder="0x..." />
+          <label for="subject-address">Subject (agent) address</label>
+          <input id="subject-address" placeholder="0x..." value="0x2222222222222222222222222222222222222222" />
+          <label for="action-class">Action class</label>
+          <input id="action-class" value="BUY_TOKENIZED_TREASURY" />
+          <label for="allowed-actions">Principal's allowed actions (comma-separated)</label>
+          <input id="allowed-actions" value="BUY_TOKENIZED_TREASURY,REBALANCE_TREASURY" />
+        </div>
+        <div>
+          <label for="max-per-tx">Principal max per transaction</label>
+          <input id="max-per-tx" value="500" />
+          <label for="max-cumulative">Principal max cumulative exposure</label>
+          <input id="max-cumulative" value="2000" />
+          <label for="valid-until-secs">Policy validity window (seconds)</label>
+          <input id="valid-until-secs" value="86400" />
+        </div>
+      </div>
+      <div class="grid">
+        <div>
+          <label for="successful-jobs">Successful jobs (evidence)</label>
+          <input id="successful-jobs" value="80" />
+        </div>
+        <div>
+          <label for="successful-settled-value">Successful settled value (evidence)</label>
+          <input id="successful-settled-value" value="20000" />
+        </div>
+      </div>
+      <label for="adjudicated-faults">Adjudicated faults (evidence)</label>
+      <input id="adjudicated-faults" value="0" />
+
+      <h2>2. Task risk</h2>
+      <div class="presets">
+        <button class="secondary" id="load-low-risk">Low risk (rebalance)</button>
+        <button class="secondary" id="load-high-risk">High risk (custody + external transfer)</button>
+      </div>
+      <div class="note" style="font-size:0.82rem;">
+        In production this comes from <code>karma_classify_task_risk</code> (a real LLM call,
+        server-side — never in the browser, to avoid exposing an API key). These presets are the
+        same <code>TaskRiskIR</code> shape that tool returns; edit the JSON freely to explore other
+        combinations — it's validated against the same zod schema the classifier uses.
+      </div>
+      <label for="risk-json">TaskRiskIR (editable)</label>
+      <textarea id="risk-json" spellcheck="false"></textarea>
+      <div class="grid">
+        <div>
+          <label for="amount-at-risk">Amount at risk (trusted, not from AI)</label>
+          <input id="amount-at-risk" value="100" />
+        </div>
+        <div>
+          <label for="duration-secs">Expected duration (seconds)</label>
+          <input id="duration-secs" value="86400" />
+        </div>
+      </div>
+
+      <button id="compile-btn">Compile Policy</button>
+      <pre id="status"></pre>
+
+      <div id="terms-card"></div>
+      <label>policyHash (computed in your browser)</label>
+      <div id="policy-hash"></div>
+      <div id="terms-diff" style="margin-top:12px;"></div>
+
+      <label>Rule trace</label>
+      <div id="rule-trace"></div>
+
+      <h2>3. Enforce on X Layer</h2>
+      <button id="connect-wallet-btn">Connect wallet</button>
+      <button class="secondary" id="add-chain-btn">Add X Layer Testnet to wallet</button>
+      <div id="connected">Not connected.</div>
+
+      <label for="contract-address">Deployed KarmaPolicyEnforcer address</label>
+      <input id="contract-address" placeholder="0x... (see docs/AI_SEASON_HACKATHON_CHECKLIST.md)" />
+
+      <button id="issue-policy-btn">Issue this policy on-chain</button>
+      <label for="policy-id-display">policyId (auto-filled after issuing, or paste one)</label>
+      <input id="policy-id-display" placeholder="0x..." />
+
+      <div class="grid">
+        <div>
+          <label for="attempt-amount">Attempt execution — amount</label>
+          <input id="attempt-amount" value="80" />
+        </div>
+        <div>
+          <button id="attempt-btn" style="margin-top:29px;">Attempt execution</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./xlayer_policy_demo.bundle.js"></script>
+  </body>
+</html>

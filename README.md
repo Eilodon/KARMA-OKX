@@ -35,12 +35,16 @@ KarmaPolicyIR:  100 / tx, 500 cumulative, 20% bond, evaluator=SINGLE, policyHash
 ```
 
 `KarmaPolicyEnforcer.sol` on X Layer then makes that artifact real: `validateAndRecordExecution`
-reverts — on-chain, not in a dashboard — the moment an attempt exceeds either cap. Same subject,
-same economic history, a *different* (riskier) task compiles to visibly tighter terms — proof
-this underwrites the obligation, not a wallet score. See
+reverts — on-chain, not in a dashboard — the moment an attempt exceeds either cap, a guarantee a
+256-run Foundry fuzz test checks holds across randomized call sequences, not just hand-picked
+examples. Same subject, same economic history, a *different* (riskier) task compiles to visibly
+tighter terms — proof this underwrites the obligation, not a wallet score. Try it yourself with
+zero setup: **[`docs/media/xlayer_policy_demo.html`](docs/media/xlayer_policy_demo.html)** runs
+the real compiler kernel client-side, in your browser — no wallet, no server, no API key needed
+to see a `policyHash` come out the other end. See
 [`docs/AI_SEASON_HACKATHON_CHECKLIST.md`](docs/AI_SEASON_HACKATHON_CHECKLIST.md) for exactly
-what's live, what's tested (39 passing tests across the compiler kernel, the contract, and the
-MCP tools), and the two runnable demo scripts (`pnpm demo:xlayer:policy-lifecycle`,
+what's live, what's tested (57 passing tests across the compiler kernel, the contract, and the MCP
+tools), and the two runnable demo scripts (`pnpm demo:xlayer:policy-lifecycle`,
 `pnpm demo:xlayer:task-risk`). Architecture source: `src/lib/trust/` (evidence → risk → policy),
 `contracts/policy/KarmaPolicyEnforcer.sol` (enforcement), `src/plugins/policy.tool.ts` (MCP
 surface: `karma_classify_task_risk`, `karma_quote_policy`, `karma_issue_policy`,

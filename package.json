@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "build:human-payer-page": "esbuild src/web/casper_human_payer_entry.ts --bundle --minify --format=esm --platform=browser --outfile=docs/media/casper_human_payer.bundle.js",
+    "build:xlayer-policy-demo-page": "esbuild src/web/xlayer_policy_demo_entry.ts --bundle --minify --format=esm --platform=browser --outfile=docs/media/xlayer_policy_demo.bundle.js",
     "start": "node dist/index.js",
     "test": "vitest run src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
