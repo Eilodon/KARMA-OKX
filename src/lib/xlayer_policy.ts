@@ -1,0 +1,236 @@
+import { encodeAbiParameters, keccak256 } from "viem";
+import type { Account, Address } from "viem";
+import { karmaPolicyEnforcerAbi } from "./abi.js";
+import { getPublicClient, getWalletClient } from "./xlayer.js";
+import { runBoundedWrite, type WriteOutcome } from "./contract.js";
+
+/**
+ * X Layer read/write surface for KarmaPolicyEnforcer.sol (AI Season build) — a standalone
+ * sidecar deployed next to AgentSkillRegistry, same convention xlayer_rationale.ts already
+ * established for RationaleAttestation. Shares xlayer.ts's public/wallet client singletons —
+ * same chain, same RPC — but reads its own env var for its own address since it's a distinct
+ * deployment.
+ */
+
+/** Deployed KarmaPolicyEnforcer address on X Layer from env; throws if not yet deployed. */
+export function getPolicyEnforcerAddress(): `0x${string}` {
+  const addr = process.env.XLAYER_POLICY_ENFORCER_ADDRESS;
+  if (!addr) {
+    throw new Error(
+      "[KARMA] XLAYER_POLICY_ENFORCER_ADDRESS not set — deploy KarmaPolicyEnforcer to X Layer " +
+        "first (forge create contracts/policy/KarmaPolicyEnforcer.sol:KarmaPolicyEnforcer " +
+        "--rpc-url $XLAYER_RPC_URL --private-key $KEY).",
+    );
+  }
+  return addr as `0x${string}`;
+}
+
+function read<T>(functionName: string, args: readonly unknown[]): Promise<T> {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  return getPublicClient().readContract({
+    address: getPolicyEnforcerAddress(),
+    abi: karmaPolicyEnforcerAbi,
+    functionName,
+    args,
+  } as never) as Promise<T>;
+}
+
+const RECEIPT_TIMEOUT_MS = 300_000;
+
+/** Bounded write against KarmaPolicyEnforcer — same broadcast-once/receipt-timeout policy as
+ *  xlayer.ts's writeContractBounded (runBoundedWrite, shared so every X Layer contract in this
+ *  repo has identical retry/idempotency semantics). Reverts (e.g. PerTransactionLimitExceeded)
+ *  surface as a thrown error from `write` — callers that need the structured Section CII
+ *  rejection code should catch and decode via `decodePolicyRejection` below. */
+export async function writePolicyEnforcerBounded(
+  account: Account,
+  call: { functionName: string; args: readonly unknown[] },
+  timeoutMs: number = RECEIPT_TIMEOUT_MS,
+): Promise<WriteOutcome> {
+  const publicClient = getPublicClient();
+  const walletClient = getWalletClient(account);
+  const address = getPolicyEnforcerAddress();
+  return runBoundedWrite(
+    {
+      simulate: async () => {
+        const { request } = await publicClient.simulateContract({
+          address,
+          abi: karmaPolicyEnforcerAbi,
+          functionName: call.functionName,
+          args: call.args,
+          account,
+        } as never);
+        return { request };
+      },
+      write: (request) => walletClient.writeContract(request as never),
+      waitReceipt: (hash, t) => publicClient.waitForTransactionReceipt({ hash, timeout: t }),
+    },
+    timeoutMs,
+  );
+}
+
+/** Deterministic `policyId` derivation — binds chain, contract, principal, subject, action, nonce
+ *  and expiry into the id itself, so `issuePolicy`'s "must be unused" check is what makes replay
+ *  across any of those dimensions impossible (contract header comment, scope-cut #2). Every
+ *  caller of `issuePolicy` should derive `policyId` this same way; the contract itself doesn't
+ *  recompute or verify it — that would need the chainid/contract binding to be re-derivable
+ *  on-chain too, which `address(this)`/`block.chainid` already give it implicitly by virtue of
+ *  which deployment received the call. */
+export function computePolicyId(p: {
+  principal: Address;
+  subject: Address;
+  actionDigest: `0x${string}`;
+  nonce: bigint;
+  expiresAt: bigint;
+}): `0x${string}` {
+  const chainId = getPublicClient().chain?.id;
+  if (chainId == null) throw new Error("[KARMA] cannot compute policyId: X Layer chain id unavailable");
+  return keccak256(
+    encodeAbiParameters(
+      [
+        { type: "uint256" },
+        { type: "address" },
+        { type: "address" },
+        { type: "address" },
+        { type: "bytes32" },
+        { type: "uint64" },
+        { type: "uint64" },
+      ],
+      [BigInt(chainId), getPolicyEnforcerAddress(), p.principal, p.subject, p.actionDigest, p.nonce, p.expiresAt],
+    ),
+  );
+}
+
+export interface IssuePolicyParams {
+  policyId: `0x${string}`;
+  subject: Address;
+  actionDigest: `0x${string}`;
+  maxPerTransaction: bigint;
+  maxCumulativeExposure: bigint;
+  expiresAt: bigint;
+  nonce: bigint;
+  policyHash: `0x${string}`;
+}
+
+export function issuePolicy(account: Account, p: IssuePolicyParams): Promise<WriteOutcome> {
+  return writePolicyEnforcerBounded(account, {
+    functionName: "issuePolicy",
+    args: [
+      p.policyId,
+      p.subject,
+      p.actionDigest,
+      p.maxPerTransaction,
+      p.maxCumulativeExposure,
+      p.expiresAt,
+      p.nonce,
+      p.policyHash,
+    ],
+  });
+}
+
+export function validateAndRecordExecution(
+  account: Account,
+  p: { policyId: `0x${string}`; amount: bigint },
+): Promise<WriteOutcome> {
+  return writePolicyEnforcerBounded(account, {
+    functionName: "validateAndRecordExecution",
+    args: [p.policyId, p.amount],
+  });
+}
+
+export function revokePolicy(account: Account, policyId: `0x${string}`): Promise<WriteOutcome> {
+  return writePolicyEnforcerBounded(account, { functionName: "revokePolicy", args: [policyId] });
+}
+
+export interface OnChainPolicy {
+  principal: Address;
+  subject: Address;
+  actionDigest: `0x${string}`;
+  maxPerTransaction: bigint;
+  maxCumulativeExposure: bigint;
+  cumulativeSpent: bigint;
+  issuedAt: bigint;
+  expiresAt: bigint;
+  nonce: bigint;
+  revoked: boolean;
+  policyHash: `0x${string}`;
+}
+
+export async function getPolicy(policyId: `0x${string}`): Promise<OnChainPolicy> {
+  const tuple = await read<
+    [Address, Address, `0x${string}`, bigint, bigint, bigint, bigint, bigint, bigint, boolean, `0x${string}`]
+  >("policies", [policyId]);
+  const [
+    principal,
+    subject,
+    actionDigest,
+    maxPerTransaction,
+    maxCumulativeExposure,
+    cumulativeSpent,
+    issuedAt,
+    expiresAt,
+    nonce,
+    revoked,
+    policyHash,
+  ] = tuple;
+  return {
+    principal,
+    subject,
+    actionDigest,
+    maxPerTransaction,
+    maxCumulativeExposure,
+    cumulativeSpent,
+    issuedAt,
+    expiresAt,
+    nonce,
+    revoked,
+    policyHash,
+  };
+}
+
+export const xLayerPolicyReads = { getPolicy };
+
+/** Rejection codes matching KarmaPolicyEnforcer.sol's custom errors, which in turn match
+ *  KARMA_OKX_MASTER_IMPLEMENTATION_PLAN.md Section CII's own rejection-telemetry vocabulary. */
+export type PolicyRejectionCode =
+  | "POLICY_NOT_FOUND"
+  | "POLICY_ALREADY_EXISTS"
+  | "INVALID_EXPIRY"
+  | "POLICY_EXPIRED"
+  | "POLICY_REVOKED"
+  | "NOT_SUBJECT"
+  | "NOT_PRINCIPAL"
+  | "PER_TRANSACTION_LIMIT_EXCEEDED"
+  | "CUMULATIVE_EXPOSURE_EXCEEDED"
+  | "UNKNOWN";
+
+const ERROR_NAME_TO_CODE: Record<string, PolicyRejectionCode> = {
+  PolicyNotFound: "POLICY_NOT_FOUND",
+  PolicyAlreadyExists: "POLICY_ALREADY_EXISTS",
+  InvalidExpiry: "INVALID_EXPIRY",
+  PolicyExpired: "POLICY_EXPIRED",
+  PolicyRevoked: "POLICY_REVOKED",
+  NotSubject: "NOT_SUBJECT",
+  NotPrincipal: "NOT_PRINCIPAL",
+  PerTransactionLimitExceeded: "PER_TRANSACTION_LIMIT_EXCEEDED",
+  CumulativeExposureExceeded: "CUMULATIVE_EXPOSURE_EXCEEDED",
+};
+
+/** Best-effort decode of a viem contract-revert error into KARMA's own rejection vocabulary —
+ *  looks for the custom error's name wherever viem surfaces it (varies by error subtype), falls
+ *  back to "UNKNOWN" rather than guessing. Used by the MCP tool layer (policy.tool.ts) so a
+ *  caller sees `PER_TRANSACTION_LIMIT_EXCEEDED`, not a raw ABI-encoded revert selector. */
+export function decodePolicyRejection(err: unknown): PolicyRejectionCode {
+  const name =
+    (err as { cause?: { data?: { errorName?: string }; name?: string } } | undefined)?.cause?.data?.errorName ??
+    (err as { cause?: { name?: string } } | undefined)?.cause?.name ??
+    (err as { name?: string } | undefined)?.name;
+  if (typeof name === "string" && name in ERROR_NAME_TO_CODE) {
+    return ERROR_NAME_TO_CODE[name];
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  for (const [errorName, code] of Object.entries(ERROR_NAME_TO_CODE)) {
+    if (message.includes(errorName)) return code;
+  }
+  return "UNKNOWN";
+}

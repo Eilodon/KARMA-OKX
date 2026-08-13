@@ -8,10 +8,11 @@ import {
   RECEIPT_TIMEOUT_MS,
   MCP_LOCK_TTL_MS,
 } from "../lib/contract.js";
-import { agentSkillRegistryAbi } from "../lib/abi.js";
+import { agentSkillRegistryAbi, karmaPolicyEnforcerAbi } from "../lib/abi.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ARTIFACT = resolve(HERE, "../../out/AgentSkillRegistry.sol/AgentSkillRegistry.json");
+const POLICY_ENFORCER_ARTIFACT = resolve(HERE, "../../out/KarmaPolicyEnforcer.sol/KarmaPolicyEnforcer.json");
 
 describe("P4.1 pharos chain + clients", () => {
   it("defines Pharos Atlantic with the live-verified chainId 688689 and PHRS currency", () => {
@@ -75,5 +76,14 @@ const hasArtifact = existsSync(ARTIFACT);
   it("agentSkillRegistryAbi structurally matches the compiled forge artifact", () => {
     const artifactAbi = JSON.parse(readFileSync(ARTIFACT, "utf8")).abi as AbiEntry[];
     expect(normalize(agentSkillRegistryAbi as unknown as AbiEntry[])).toEqual(normalize(artifactAbi));
+  });
+});
+
+const hasPolicyEnforcerArtifact = existsSync(POLICY_ENFORCER_ARTIFACT);
+
+(hasPolicyEnforcerArtifact ? describe : describe.skip)("AI Season — KarmaPolicyEnforcer ABI drift guard", () => {
+  it("karmaPolicyEnforcerAbi structurally matches the compiled forge artifact", () => {
+    const artifactAbi = JSON.parse(readFileSync(POLICY_ENFORCER_ARTIFACT, "utf8")).abi as AbiEntry[];
+    expect(normalize(karmaPolicyEnforcerAbi as unknown as AbiEntry[])).toEqual(normalize(artifactAbi));
   });
 });

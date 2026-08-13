@@ -1,0 +1,138 @@
+# AI Season Hackathon (X Layer) — what's built, what's left, and who does it
+
+Deadline: **21 August 2026, 23:59 UTC** (hackathon period 7–21 Aug). Separate from, and newer
+than, the OKX.AI Genesis Hackathon tracked in `docs/OKX_HACKATHON_CHECKLIST.md` (deadline already
+passed, 27 July) — that checklist's ASP registration / MCP endpoint work still matters here (see
+§0), but this is a distinct submission with its own Google Form and its own AI-RWA track.
+
+Official page: `web3.okx.com/xlayer/build-x-series` (AI Season). Prize pool up to 300,000 USDT:
+Hackathon Grant (1st 30K / 2nd 15K / 3rd 5K), **AI-RWA Liquidity Grant 50K USDT** (the track this
+submission targets), Launch Grant up to 200K (trading-volume-gated — not applicable to KARMA, not
+pursued).
+
+**Strategy in one line, same as Genesis: testnet-only for the hackathon window, mainnet after
+(the official FAQ says mainnet deploy happens post-hackathon), submit as soon as the compiler
+kernel + on-chain enforcement are provably working.**
+
+Eligibility per the official qualify list: build AI into the product, deploy independently on X
+Layer, maintain a dedicated X account, tag @XLayerOfficial when submitting.
+
+## 0. What's already live from Genesis and must not go dark
+
+- `AgentSkillRegistry` on X Layer testnet:
+  [`0xBF285628869c2EFaf6731F8503B39B7130474Cd2`](https://www.oklink.com/xlayer-test/address/0xBF285628869c2EFaf6731F8503B39B7130474Cd2).
+- ASP/MCP endpoint `https://karma-trust-oracle.fly.dev/mcp` — health-checked 200 OK this session
+  (`tools/list` returns `karma_pattern_debt`, `karma_ping`, `get_cross_chain_trust_score`). X
+  Layer has publicly warned offline ASPs get delisted during review — **re-check this before
+  submitting**, don't assume it's still up from a prior session.
+
+## 1. Economic Trust Compiler kernel — DONE (this session, pure TS, no chain)
+
+The four core deliverables the whole master-plan thesis hinges on
+(`KARMA_OKX_MASTER_IMPLEMENTATION_PLAN.md` Section CXXI), scoped to what a hackathon window can
+actually prove:
+
+- [x] `TrustEvidenceBundle` / `EvidenceLeg` types — `src/lib/trust/evidence/types.ts`
+- [x] `TaskRiskIR` + `TaskRiskClassifier` — `src/lib/trust/risk/types.ts`,
+      `src/lib/trust/risk/classifier.ts`. Reuses `autonomous_loop/llm_strategy.ts`'s bounded-AI
+      shape (deterministic pre-filter is trivial here → forced structured LLM call → **real zod
+      schema validation, enum-only fields** → fallback-closed), with two things stricter than
+      that file's own pattern: real schema validation instead of ad-hoc `typeof` checks, and a
+      deterministic "impossible combination" check (Section XIV).
+- [x] `KarmaPolicyIR` + deterministic `compiler.ts` — `src/lib/trust/policy/{ir,compiler,profiles,hash,explain}.ts`.
+      One profile, `CONSERVATIVE_RWA_V1`, with the exact thin/established/strong tier numbers
+      from the plan's own Section XVIII worked example. Three-layer intersection (principal cap ∩
+      earned trust ∩ task risk), machine-readable rule trace using the plan's own `RULE_xxx`
+      naming.
+- [x] Property tests (`fast-check`, newly added devDependency) — `src/__tests__/policy_compiler.test.ts`:
+      principal cap never exceeded, risk-up never loosens terms, adjudicated fault never improves
+      terms, determinism (same input → same `policyHash`). 12 tests, all passing.
+- [x] `TaskRiskClassifier` tests — `src/__tests__/task_risk_classifier.test.ts`, 8 tests including
+      a prompt-injection case (attacker text embedded in a free-text field never reaches an enum
+      the compiler branches on).
+
+Verify: `pnpm exec vitest run src/__tests__/policy_compiler.test.ts src/__tests__/task_risk_classifier.test.ts`
+
+## 2. X Layer hard enforcement — contract DONE, deploy NEEDS A HUMAN
+
+- [x] `contracts/policy/KarmaPolicyEnforcer.sol` — additive sidecar (same convention as
+      `RationaleAttestation.sol`), direct on-chain issuance (documented scope-cut vs. EIP-712 —
+      see the contract's own header comment for why), custom errors matching the plan's Section
+      CII rejection-code vocabulary literally (`PerTransactionLimitExceeded`,
+      `CumulativeExposureExceeded`, `PolicyExpired`, `PolicyRevoked`, ...).
+- [x] `test/KarmaPolicyEnforcer.t.sol` — 12 Foundry tests, all passing (`forge test --match-contract
+      KarmaPolicyEnforcerTest`), directly covering Definition-of-Done Scenario D (hard cap → revert)
+      and Scenario H-style "revocation doesn't rewrite already-recorded spend."
+- [x] `src/lib/abi.ts` (`karmaPolicyEnforcerAbi`) + structural drift-guard test extended in
+      `src/__tests__/karma_contract.test.ts`.
+- [x] `src/lib/xlayer_policy.ts` — TS read/write binding, copied skeleton-for-skeleton from
+      `xlayer_rationale.ts`.
+- [ ] **Deploy to X Layer testnet — blocked on a funded key.** This sandbox has no `.env`, no
+      credentials handoff file, and no `PRIVATE_KEY` in the environment (checked directly). Once a
+      human funds a deployer key from `https://web3.okx.com/xlayer/faucet`:
+      ```
+      forge create contracts/policy/KarmaPolicyEnforcer.sol:KarmaPolicyEnforcer \
+        --rpc-url $XLAYER_RPC_URL --private-key $KEY
+      ```
+      then set `XLAYER_POLICY_ENFORCER_ADDRESS` in `.env` to the printed address (same pattern
+      §1 of the Genesis checklist used for `AgentSkillRegistry`, which a later session *did*
+      manage to broadcast for real once funded — this isn't necessarily a human-only step
+      end-to-end, just blocked on funding right now).
+
+## 3. MCP tool surface — DONE (this session)
+
+`src/plugins/policy.tool.ts`, registered in `isTrustedBuiltInPlugin()`:
+
+- [x] `karma_classify_task_risk`, `karma_quote_policy` (pure, no chain write)
+- [x] `karma_issue_policy`, `karma_execute_with_policy` (X Layer writes, decode reverts into the
+      Section CII rejection vocabulary via `decodePolicyRejection`)
+- [x] `src/__tests__/policy_tool.test.ts` — 7 tests, all passing, including "action outside the
+      principal's allowedActions collapses authority to zero" and "omitting risk compiles under
+      the conservative fallback, not a permissive default."
+
+These tools are additive on the *existing, already-approved* MCP endpoint (§0) — no new ASP
+review cycle needed once deployed and wired to a live env.
+
+## 4. Demo scripts (Scenario A + B) — DONE, not yet run against a live deployment
+
+- [x] `src/scripts/demo_xlayer_policy_lifecycle.ts` (`pnpm demo:xlayer:policy-lifecycle`) —
+      Definition-of-Done Scenario A + D: Alpha (strong evidence) vs. Beta (thin evidence), same
+      RWA task, different `KarmaPolicyIR`, both issued on X Layer testnet, Beta's over-cap attempt
+      reverts on-chain for real.
+- [x] `src/scripts/demo_xlayer_task_risk_scenarios.ts` (`pnpm demo:xlayer:task-risk`) — Scenario B
+      (plan Section XLVII's own "quan trọng hơn" scenario): the SAME subject, SAME evidence, two
+      different task descriptions, two different sets of terms, both issued on-chain — the direct
+      rebuttal to "KARMA is just a wallet score."
+- [ ] **Actually run them against X Layer testnet — blocked on the same funded key as §2.**
+      Once `XLAYER_POLICY_ENFORCER_ADDRESS` and a funded `PRIVATE_KEY` are set, both scripts are
+      self-contained (they generate + fund their own ephemeral subject keypairs from the funded
+      operator key).
+
+## 5. RWA evidence port — DONE
+
+- [x] `src/lib/casper/rwa_price_feed.ts` / `rwa_provenance_receipt.ts` moved to
+      `src/lib/rwa/` (confirmed 100% chain-agnostic — no Casper SDK dependency), old paths kept as
+      thin re-export shims so the existing Casper demo scripts/tests need zero changes (22
+      pre-existing tests re-verified passing through the shim).
+- [x] `canonicalize`/`sha256Hex` deduplicated into `src/lib/canonical_hash.ts`, shared by both the
+      RWA receipt module and the policy compiler's `policyHash`.
+
+## 6. Not done — explicitly cut for this build (documented, not forgotten)
+
+Recursive delegation/Contract Graph, cross-chain evidence dedup, ZK `PolicyCredentialProof`, full
+reserve/commit/settle exposure ledger with concurrency fuzzing, EVM panel-arbitration port, an
+event indexer, EIP-712 signed policies. None of these gate AI Season eligibility or the judging
+criteria (application of AI, innovation, product completeness, user value, X Layer integration,
+growth potential, ecosystem contribution) — they're legitimate future work once this kernel is
+proven live.
+
+## 7. Submission — owned by the user, not this agent session
+
+Per explicit instruction this session: **X account, video, and the Google Form are the user's own
+responsibility**, not something to automate here. What this checklist owes that process:
+
+- A working, testable story: kernel (§1) proven by 20 passing property/unit tests, contract (§2)
+  proven by 12 passing Foundry tests, MCP surface (§3) proven by 7 passing tests, two named demo
+  scripts (§4) ready to run the moment a funded key exists.
+- The AI-RWA framing is not a stretch: `fetchUsTreasuryYield`/`fetchBtcUsdPrice` (real, live,
+  keyless public APIs, not stubs) already feed both demo scripts' narrative context.

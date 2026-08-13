@@ -181,3 +181,82 @@ export const rationaleAttestationAbi = [
   { type: "error", name: "NotRequester", inputs: [{ name: "jobId", type: "uint256" }, { name: "caller", type: "address" }] },
   { type: "error", name: "RationaleAlreadyAttested", inputs: [{ name: "jobId", type: "uint256" }] },
 ] as const;
+
+/**
+ * Typed ABI for KarmaPolicyEnforcer.sol (AI Season build), transcribed from
+ * out/KarmaPolicyEnforcer.sol/KarmaPolicyEnforcer.json — a standalone sidecar, same convention
+ * as rationaleAttestationAbi above (own const, own deployed address
+ * XLAYER_POLICY_ENFORCER_ADDRESS, never merged with the other two). The structural drift-guard
+ * test in src/__tests__/karma_contract.test.ts covers this ABI too.
+ */
+export const karmaPolicyEnforcerAbi = [
+  {
+    type: "function", name: "issuePolicy", stateMutability: "nonpayable",
+    inputs: [
+      { name: "policyId", type: "bytes32" },
+      { name: "subject", type: "address" },
+      { name: "actionDigest", type: "bytes32" },
+      { name: "maxPerTransaction", type: "uint256" },
+      { name: "maxCumulativeExposure", type: "uint256" },
+      { name: "expiresAt", type: "uint64" },
+      { name: "nonce", type: "uint64" },
+      { name: "policyHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function", name: "policies", stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [
+      { name: "principal", type: "address" },
+      { name: "subject", type: "address" },
+      { name: "actionDigest", type: "bytes32" },
+      { name: "maxPerTransaction", type: "uint256" },
+      { name: "maxCumulativeExposure", type: "uint256" },
+      { name: "cumulativeSpent", type: "uint256" },
+      { name: "issuedAt", type: "uint64" },
+      { name: "expiresAt", type: "uint64" },
+      { name: "nonce", type: "uint64" },
+      { name: "revoked", type: "bool" },
+      { name: "policyHash", type: "bytes32" },
+    ],
+  },
+  { type: "function", name: "revokePolicy", stateMutability: "nonpayable", inputs: [{ name: "policyId", type: "bytes32" }], outputs: [] },
+  {
+    type: "function", name: "validateAndRecordExecution", stateMutability: "nonpayable",
+    inputs: [{ name: "policyId", type: "bytes32" }, { name: "amount", type: "uint256" }],
+    outputs: [{ name: "newCumulativeSpent", type: "uint256" }],
+  },
+
+  { type: "event", name: "PolicyIssued", inputs: [
+    { name: "policyId", type: "bytes32", indexed: true },
+    { name: "principal", type: "address", indexed: true },
+    { name: "subject", type: "address", indexed: true },
+    { name: "actionDigest", type: "bytes32", indexed: false },
+    { name: "maxPerTransaction", type: "uint256", indexed: false },
+    { name: "maxCumulativeExposure", type: "uint256", indexed: false },
+    { name: "expiresAt", type: "uint64", indexed: false },
+    { name: "nonce", type: "uint64", indexed: false },
+    { name: "policyHash", type: "bytes32", indexed: false },
+  ] },
+  { type: "event", name: "PolicyExecuted", inputs: [
+    { name: "policyId", type: "bytes32", indexed: true },
+    { name: "subject", type: "address", indexed: true },
+    { name: "amount", type: "uint256", indexed: false },
+    { name: "cumulativeSpent", type: "uint256", indexed: false },
+  ] },
+  { type: "event", name: "PolicyRevocation", inputs: [
+    { name: "policyId", type: "bytes32", indexed: true },
+    { name: "principal", type: "address", indexed: true },
+  ] },
+
+  { type: "error", name: "PolicyAlreadyExists", inputs: [{ name: "policyId", type: "bytes32" }] },
+  { type: "error", name: "InvalidExpiry", inputs: [{ name: "policyId", type: "bytes32" }, { name: "expiresAt", type: "uint64" }, { name: "nowTs", type: "uint64" }] },
+  { type: "error", name: "PolicyNotFound", inputs: [{ name: "policyId", type: "bytes32" }] },
+  { type: "error", name: "PolicyExpired", inputs: [{ name: "policyId", type: "bytes32" }, { name: "expiresAt", type: "uint64" }, { name: "nowTs", type: "uint64" }] },
+  { type: "error", name: "PolicyRevoked", inputs: [{ name: "policyId", type: "bytes32" }] },
+  { type: "error", name: "NotSubject", inputs: [{ name: "policyId", type: "bytes32" }, { name: "caller", type: "address" }] },
+  { type: "error", name: "NotPrincipal", inputs: [{ name: "policyId", type: "bytes32" }, { name: "caller", type: "address" }] },
+  { type: "error", name: "PerTransactionLimitExceeded", inputs: [{ name: "policyId", type: "bytes32" }, { name: "amount", type: "uint256" }, { name: "maxPerTransaction", type: "uint256" }] },
+  { type: "error", name: "CumulativeExposureExceeded", inputs: [{ name: "policyId", type: "bytes32" }, { name: "attemptedTotal", type: "uint256" }, { name: "maxCumulativeExposure", type: "uint256" }] },
+] as const;

@@ -13,6 +13,41 @@ payment goes out.
 
 ---
 
+## Economic Trust Compiler (AI Season build)
+
+`get_cross_chain_trust_score` below answers "has this agent delivered before?" with one number.
+That's useful for discovery, but a number alone can't tell an autonomous agent *how much* it's
+allowed to spend on a specific obligation — and a number is exactly the kind of thing a bad actor
+learns to farm. The newer layer in this repo, built for X Layer's AI Season Hackathon (AI-RWA
+track), answers a different, harder question instead:
+
+> "I want to let Agent A execute obligation X, worth up to 1,000 USDT. What terms should this
+> actually have — and can I make the chain enforce them, not just recommend them?"
+
+The answer isn't a score. It's an enforceable, reproducible artifact:
+
+```
+principal cap:  500 / tx, 2000 cumulative     (what you allowed, at most)
+earned trust:   → 100 / tx, 500 cumulative    (evidence-derived tier, never above the cap)
+task risk:      custody required, irreversible → bond floor raised, evaluator required
+─────────────────────────────────────────────────────────────────────────────────────
+KarmaPolicyIR:  100 / tx, 500 cumulative, 20% bond, evaluator=SINGLE, policyHash=0x…
+```
+
+`KarmaPolicyEnforcer.sol` on X Layer then makes that artifact real: `validateAndRecordExecution`
+reverts — on-chain, not in a dashboard — the moment an attempt exceeds either cap. Same subject,
+same economic history, a *different* (riskier) task compiles to visibly tighter terms — proof
+this underwrites the obligation, not a wallet score. See
+[`docs/AI_SEASON_HACKATHON_CHECKLIST.md`](docs/AI_SEASON_HACKATHON_CHECKLIST.md) for exactly
+what's live, what's tested (39 passing tests across the compiler kernel, the contract, and the
+MCP tools), and the two runnable demo scripts (`pnpm demo:xlayer:policy-lifecycle`,
+`pnpm demo:xlayer:task-risk`). Architecture source: `src/lib/trust/` (evidence → risk → policy),
+`contracts/policy/KarmaPolicyEnforcer.sol` (enforcement), `src/plugins/policy.tool.ts` (MCP
+surface: `karma_classify_task_risk`, `karma_quote_policy`, `karma_issue_policy`,
+`karma_execute_with_policy`).
+
+---
+
 ## What it does
 
 `get_cross_chain_trust_score` is a free tool any agent can call. Give it an address, and it reads
