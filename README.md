@@ -34,11 +34,16 @@ task risk:      custody required, irreversible → bond floor raised, evaluator 
 KarmaPolicyIR:  100 / tx, 500 cumulative, 20% bond, evaluator=SINGLE, policyHash=0x…
 ```
 
-`KarmaPolicyEnforcer.sol` on X Layer then makes that artifact real: `validateAndRecordExecution`
-reverts — on-chain, not in a dashboard — the moment an attempt exceeds either cap, a guarantee a
-256-run Foundry fuzz test checks holds across randomized call sequences, not just hand-picked
-examples. Same subject, same economic history, a *different* (riskier) task compiles to visibly
-tighter terms — proof this underwrites the obligation, not a wallet score. Try it yourself with
+`KarmaPolicyEnforcer.sol` is **live on X Layer testnet**:
+[`0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075`](https://www.oklink.com/xlayer-test/address/0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075).
+`validateAndRecordExecution` reverts — on-chain, not in a dashboard — the moment an attempt
+exceeds either cap, a guarantee a 256-run Foundry fuzz test checks holds across randomized call
+sequences, and that a real Beta account already hit for real, on that deployment, with
+[`PER_TRANSACTION_LIMIT_EXCEEDED`](https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb).
+Same subject, same economic history, a *different* (riskier) task compiles to visibly tighter
+terms — proof this underwrites the obligation, not a wallet score, also
+[issued on that same live deployment](https://www.oklink.com/xlayer-test/tx/0xc24e2bc2519d194fea6ad627c521bf0d8f23e46d261d0982bf2256bb24cc3822).
+Try it yourself with
 zero setup: **[`docs/media/xlayer_policy_demo.html`](docs/media/xlayer_policy_demo.html)** runs
 the real compiler kernel client-side, in your browser — no wallet, no server, no API key needed
 to see a `policyHash` come out the other end. See

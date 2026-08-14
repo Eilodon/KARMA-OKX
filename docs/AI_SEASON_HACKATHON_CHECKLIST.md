@@ -26,6 +26,35 @@ Layer, maintain a dedicated X account, tag @XLayerOfficial when submitting.
   Layer has publicly warned offline ASPs get delisted during review — **re-check this before
   submitting**, don't assume it's still up from a prior session.
 
+## 0.5. `KarmaPolicyEnforcer` — LIVE on X Layer testnet, both demo scenarios run for real
+
+**Deployed:** [`0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075`](https://www.oklink.com/xlayer-test/address/0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075)
+(tx [`0x2978d02e018f83757002f8c876edc0a544c593e5fbeaab7c7339dbd2039a5089`](https://www.oklink.com/xlayer-test/tx/0x2978d02e018f83757002f8c876edc0a544c593e5fbeaab7c7339dbd2039a5089),
+block 38244118, deployer `0x2143e36C9DF45fb98AE9aE116C4E99B7800a39d7`, signed via the repo's own
+`KeystoreManager` — the raw private key never left that class, matching its own documented
+security design). Set `XLAYER_POLICY_ENFORCER_ADDRESS=0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075`
+in `.env` to use it.
+
+**Both Definition-of-Done demo scenarios run live against it this session, not simulated:**
+
+Scenario A (Alpha vs Beta, same task) — Alpha (strong evidence) got 100/500 terms, attempted 80,
+[**PERMITTED**](https://www.oklink.com/xlayer-test/tx/0x92395d48333f9914a617161f6b450c63c5f8eacf8c46c514206496858862a0bc).
+Beta (thin evidence) got 10/50 terms, attempted 25,
+[**REJECTED on-chain**](https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb)
+with `PER_TRANSACTION_LIMIT_EXCEEDED` — the plan's own Scenario D ("Beta calls execute(25).
+Revert.") literally, on real testnet, with a real reverted transaction.
+
+Scenario B (same subject, different task risk) — the SAME subject/evidence: a low-risk rebalance
+task compiled to 100/500 terms, evaluator NONE, 20% bond
+([issued](https://www.oklink.com/xlayer-test/tx/0x4deda90c476e60c7785ab37cd3f4254b852ac46bd16c8d28265747348f13fc02));
+a high-risk custody+external-transfer task compiled to 50/250 terms, evaluator PANEL, 50% bond
+([issued](https://www.oklink.com/xlayer-test/tx/0xc24e2bc2519d194fea6ad627c521bf0d8f23e46d261d0982bf2256bb24cc3822))
+— same subject, same reputation, provably different terms because the obligation differs. This is
+the plan's own central claim (Section XLVII), proven with real transactions, not asserted.
+
+This makes §2/§4's "ready to run the moment a funded key exists" no longer conditional — it
+happened.
+
 ## 1. Economic Trust Compiler kernel — DONE (this session, pure TS, no chain)
 
 The four core deliverables the whole master-plan thesis hinges on
@@ -96,17 +125,10 @@ Verify: `pnpm exec vitest run src/__tests__/policy_compiler.test.ts src/__tests_
       `xlayer_rationale.ts`; `signPolicyAuthorization`/`issuePolicyWithSignature` added for the
       signed path (`walletClient.signTypedData` against the exact same EIP-712 domain the
       contract's constructor registers).
-- [ ] **Deploy to X Layer testnet — blocked on a funded key.** This sandbox has no `.env`, no
-      credentials handoff file, and no `PRIVATE_KEY` in the environment (checked directly). Once a
-      human funds a deployer key from `https://web3.okx.com/xlayer/faucet`:
-      ```
-      forge create contracts/policy/KarmaPolicyEnforcer.sol:KarmaPolicyEnforcer \
-        --rpc-url $XLAYER_RPC_URL --private-key $KEY
-      ```
-      then set `XLAYER_POLICY_ENFORCER_ADDRESS` in `.env` to the printed address (same pattern
-      §1 of the Genesis checklist used for `AgentSkillRegistry`, which a later session *did*
-      manage to broadcast for real once funded — this isn't necessarily a human-only step
-      end-to-end, just blocked on funding right now).
+- [x] **Deployed to X Layer testnet.** [`0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075`](https://www.oklink.com/xlayer-test/address/0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075) —
+      see §0.5. Signed via `KeystoreManager` + `viem`'s `deployContract` (not a raw `forge create
+      --private-key`) so the deployer's private key never left the keystore-decryption class, in
+      keeping with that class's own stated security design.
 
 ## 3. MCP tool surface — DONE (this session)
 
@@ -122,7 +144,7 @@ Verify: `pnpm exec vitest run src/__tests__/policy_compiler.test.ts src/__tests_
 These tools are additive on the *existing, already-approved* MCP endpoint (§0) — no new ASP
 review cycle needed once deployed and wired to a live env.
 
-## 4. Demo scripts (Scenario A + B) — DONE, not yet run against a live deployment
+## 4. Demo scripts (Scenario A + B) — DONE, both run live against the real deployment
 
 - [x] `src/scripts/demo_xlayer_policy_lifecycle.ts` (`pnpm demo:xlayer:policy-lifecycle`) —
       Definition-of-Done Scenario A + D: Alpha (strong evidence) vs. Beta (thin evidence), same
@@ -132,10 +154,12 @@ review cycle needed once deployed and wired to a live env.
       (plan Section XLVII's own "quan trọng hơn" scenario): the SAME subject, SAME evidence, two
       different task descriptions, two different sets of terms, both issued on-chain — the direct
       rebuttal to "KARMA is just a wallet score."
-- [ ] **Actually run them against X Layer testnet — blocked on the same funded key as §2.**
-      Once `XLAYER_POLICY_ENFORCER_ADDRESS` and a funded `PRIVATE_KEY` are set, both scripts are
-      self-contained (they generate + fund their own ephemeral subject keypairs from the funded
-      operator key).
+- [x] **Both scenarios actually run against X Layer testnet this session — see §0.5 for every tx
+      hash.** Run inline against `KeystoreManager` rather than the scripts' own `PRIVATE_KEY`-env
+      convenience path (same compiler/xlayer_policy functions either way) so the funded key never
+      left keystore-decryption. To re-run via the committed scripts themselves:
+      `XLAYER_POLICY_ENFORCER_ADDRESS=0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075 PRIVATE_KEY=0x...
+      pnpm demo:xlayer:policy-lifecycle` (and `:task-risk`).
 
 ## 5. RWA evidence port — DONE
 
@@ -231,12 +255,13 @@ ecosystem contribution) — they're legitimate future work once this kernel is p
 Per explicit instruction this session: **X account, video, and the Google Form are the user's own
 responsibility**, not something to automate here. What this checklist owes that process:
 
-- A working, testable story: kernel (§1) proven by 36 passing property/unit tests, contract (§2)
-  proven by 20 passing Foundry tests (including a 256-run fuzz test and 6 EIP-712 signature
-  tests), MCP surface (§3) proven by 7 passing tests, two named demo scripts (§4) ready to run the
-  moment a funded key exists, a live, interactive, Playwright-verified demo webpage (§6) that
-  needs no wallet at all to show the compiler actually working, and a genuine ZK circuit (§8) —
-  real proof, real EVM pairing-precompile verification, real anti-correlation property — not a
-  circuit that exists only as a plan-document description.
+- A working, testable, and now **live** story: kernel (§1) proven by 36 passing property/unit
+  tests, contract (§2) proven by 20 passing Foundry tests (including a 256-run fuzz test and 6
+  EIP-712 signature tests) AND deployed for real to X Layer testnet, MCP surface (§3) proven by 7
+  passing tests, both demo scenarios (§4) actually run against that live deployment with real tx
+  hashes for every step (§0.5) — including a real on-chain revert — a live, interactive,
+  Playwright-verified demo webpage (§6) that needs no wallet at all to show the compiler actually
+  working, and a genuine ZK circuit (§8) — real proof, real EVM pairing-precompile verification,
+  real anti-correlation property — not a circuit that exists only as a plan-document description.
 - The AI-RWA framing is not a stretch: `fetchUsTreasuryYield`/`fetchBtcUsdPrice` (real, live,
   keyless public APIs, not stubs) already feed both demo scripts' narrative context.
