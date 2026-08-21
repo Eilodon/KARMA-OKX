@@ -1,25 +1,24 @@
-# KARMA — Cross-Chain Trust Oracle for OKX.AI
+# KARMA — The Economic Policy Layer for Autonomous Agents
 
-[![CI](https://github.com/Eilodon/KARMA-NEW/actions/workflows/ci.yml/badge.svg)](https://github.com/Eilodon/KARMA-NEW/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/Eilodon/KARMA-NEW/actions/workflows/codeql.yml/badge.svg)](https://github.com/Eilodon/KARMA-NEW/actions/workflows/codeql.yml)
+[![CI](https://github.com/Eilodon/KARMA-OKX/actions/workflows/ci.yml/badge.svg)](https://github.com/Eilodon/KARMA-OKX/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Eilodon/KARMA-OKX/actions/workflows/codeql.yml/badge.svg)](https://github.com/Eilodon/KARMA-OKX/actions/workflows/codeql.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-**[→ See it live — judge walkthrough](https://eilodon.github.io/KARMA-NEW/xlayer-judges.html)** —
+**[→ See it live — judge walkthrough](https://eilodon.github.io/KARMA-OKX/xlayer-policy-judges.html)** —
 real terminal output, real on-chain transactions, click through to the explorer yourself.
 
-Would you send a stranger money before they've done any work for you? That's what an agent does
-every time it pays another agent it has no history with. KARMA answers that question before the
-payment goes out.
+Reputation tells an agent *who* to trust. KARMA decides *what they're allowed to do* — and makes
+the chain enforce it, not just recommend it.
 
 ---
 
-## Economic Trust Compiler (AI Season build)
+## Economic Trust Compiler (AI Season build, AI-RWA track)
 
-`get_cross_chain_trust_score` below answers "has this agent delivered before?" with one number.
-That's useful for discovery, but a number alone can't tell an autonomous agent *how much* it's
-allowed to spend on a specific obligation — and a number is exactly the kind of thing a bad actor
-learns to farm. The newer layer in this repo, built for X Layer's AI Season Hackathon (AI-RWA
-track), answers a different, harder question instead:
+`get_cross_chain_trust_score` further below answers "has this agent delivered before?" with one
+number. That's useful for discovery, but a number alone can't tell an autonomous agent *how much*
+it's allowed to spend on a specific obligation — and a number is exactly the kind of thing a bad
+actor learns to farm. This layer, built for X Layer's AI Season Hackathon (AI-RWA track), answers
+a different, harder question instead:
 
 > "I want to let Agent A execute obligation X, worth up to 1,000 USDT. What terms should this
 > actually have — and can I make the chain enforce them, not just recommend them?"
@@ -44,7 +43,8 @@ Same subject, same economic history, a *different* (riskier) task compiles to vi
 terms — proof this underwrites the obligation, not a wallet score, also
 [issued on that same live deployment](https://www.oklink.com/xlayer-test/tx/0xc24e2bc2519d194fea6ad627c521bf0d8f23e46d261d0982bf2256bb24cc3822).
 Try it yourself with
-zero setup: **[`docs/media/xlayer_policy_demo.html`](docs/media/xlayer_policy_demo.html)** runs
+zero setup: **[live demo](https://eilodon.github.io/KARMA-OKX/xlayer_policy_demo.html)**
+(source: [`docs/media/xlayer_policy_demo.html`](docs/media/xlayer_policy_demo.html)) runs
 the real compiler kernel client-side, in your browser — no wallet, no server, no API key needed
 to see a `policyHash` come out the other end. See
 [`docs/AI_SEASON_HACKATHON_CHECKLIST.md`](docs/AI_SEASON_HACKATHON_CHECKLIST.md) for exactly
@@ -60,9 +60,10 @@ without revealing the actual score — is a real, EVM-verified Groth16 circuit, 
 
 ---
 
-## What it does
+## The reputation layer underneath (built earlier, still live — read this second)
 
-`get_cross_chain_trust_score` is a free tool any agent can call. Give it an address, and it reads
+`get_cross_chain_trust_score` is the evidence feed the policy compiler above consumes. It's also a
+free, standalone ASP any agent can call directly. Give it an address, and it reads
 that agent's on-chain reputation and job/dispute history across four independently run chains —
 Pharos, X Layer, Casper, and Stellar — and returns one evidence-backed answer. No signup, no
 payment, one call.

@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KARMA Economic Policy Layer — judge walkthrough</title>
+<style>
+  :root{
+    --bg:#0d0f12; --surface:#15181c; --surface-2:#1b1f24;
+    --ink:#eef0f2; --ink-soft:#9aa3ac; --ink-faint:#5f6870;
+    --accent:#ef4d3d; --accent-soft:#3a1c17; --accent-ink:#fff0ee;
+    --good:#34c77b; --good-soft:#123420;
+    --pending:#f0b429; --pending-soft:#3a2c0d;
+    --border:#262b31; --code-bg:#0a0c0e;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:64px 24px 100px;}
+  a{color:var(--accent);}
+
+  .eyebrow{
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:12.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-faint); margin:0 0 14px;
+  }
+  h1{
+    font-size:clamp(32px,5vw,46px); font-weight:800; letter-spacing:-.01em;
+    line-height:1.08; margin:0 0 20px; text-wrap:balance;
+  }
+  h1 .hl{color:var(--accent);}
+  .lede{font-size:18px; color:var(--ink-soft); max-width:60ch; margin:0 0 36px;}
+
+  .stamp-row{display:flex; flex-wrap:wrap; gap:10px; margin:0 0 48px;}
+  .stamp{
+    display:inline-flex; align-items:center; gap:7px;
+    font-family:ui-monospace,monospace; font-size:12.5px; font-weight:600;
+    padding:7px 13px; border-radius:100px; border:1px solid var(--border);
+    background:var(--surface); color:var(--ink-soft);
+  }
+  .stamp.good{border-color:transparent; background:var(--good-soft); color:var(--good);}
+  .stamp.pending{border-color:transparent; background:var(--pending-soft); color:var(--pending);}
+  .stamp .dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+  h2{
+    font-size:24px; font-weight:800; margin:0 0 6px; letter-spacing:-.005em;
+  }
+  .section{margin:0 0 56px;}
+  .section > p.deck{color:var(--ink-soft); font-size:15.5px; max-width:64ch; margin:0 0 26px;}
+
+  .archetype{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px;
+  }
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:20px 22px; box-shadow:var(--shadow);
+  }
+  .card .num{font-family:ui-monospace,monospace; color:var(--accent); font-size:13px; font-weight:700;}
+  .card h3{font-size:15.5px; margin:10px 0 6px;}
+  .card p{margin:0; font-size:13.8px; color:var(--ink-soft);}
+
+  .flow{
+    display:flex; flex-wrap:wrap; align-items:stretch; gap:0;
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:26px; box-shadow:var(--shadow);
+  }
+  .flow-step{flex:1 1 150px; padding:10px 14px; text-align:center;}
+  .flow-step .k{
+    font-family:ui-monospace,monospace; font-size:11px; color:var(--ink-faint);
+    text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;
+  }
+  .flow-step .v{font-size:14px; font-weight:600;}
+  .flow-step .sub{font-size:12.5px; color:var(--ink-soft); margin-top:4px;}
+  .flow-arrow{
+    display:flex; align-items:center; justify-content:center; color:var(--ink-faint);
+    font-size:20px; flex:0 0 auto; padding:0 4px;
+  }
+  @media (max-width:640px){ .flow-arrow{ transform:rotate(90deg); } }
+
+  table.status{width:100%; min-width:560px; border-collapse:collapse; font-size:14px;}
+  .twrap{border:1px solid var(--border); border-radius:12px; overflow-x:auto; box-shadow:var(--shadow);}
+  table.status th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-faint); font-weight:600; padding:12px 16px; background:var(--surface-2);
+    border-bottom:1px solid var(--border); white-space:nowrap;
+  }
+  table.status td{padding:13px 16px; border-bottom:1px solid var(--border); background:var(--surface); vertical-align:top;}
+  table.status tr:last-child td{border-bottom:none;}
+  table.status td:first-child{white-space:nowrap;}
+  @media (max-width:640px){
+    table.status{min-width:0;}
+    table.status thead{display:none;}
+    table.status, table.status tbody, table.status tr, table.status td{display:block; width:100%;}
+    table.status tr{border-bottom:1px solid var(--border); padding:14px 16px;}
+    table.status tr:last-child{border-bottom:none;}
+    table.status td{padding:3px 0; border-bottom:none;}
+    table.status td:first-child{font-weight:700; white-space:normal;}
+  }
+  .pill{
+    display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700;
+    padding:3px 10px; border-radius:100px; white-space:nowrap;
+  }
+  .pill.real{background:var(--good-soft); color:var(--good);}
+  .pill.pending{background:var(--pending-soft); color:var(--pending);}
+  code{font-family:ui-monospace,monospace; font-size:.92em; background:var(--surface-2); padding:.1em .4em; border-radius:4px;}
+
+  .term{
+    background:var(--code-bg); border:1px solid var(--border); border-radius:12px;
+    box-shadow:var(--shadow); overflow:hidden; margin:0 0 18px;
+  }
+  .term .bar{display:flex; gap:6px; padding:11px 14px; background:var(--surface-2); border-bottom:1px solid var(--border);}
+  .term .bar span{width:10px;height:10px;border-radius:50%;background:#3d434a;}
+  .term pre{
+    margin:0; padding:18px 20px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:12.6px; line-height:1.65; color:#c9d1d9; overflow-x:auto; white-space:pre;
+  }
+  .term .ok{color:var(--good);}
+  .term .bad{color:#ff6b5e;}
+  .term .muted{color:var(--ink-faint);}
+  .cap{font-size:12.5px; color:var(--ink-faint); margin:0 0 26px;}
+
+  .cta-row{display:flex; flex-wrap:wrap; gap:12px; margin-top:8px;}
+  .cta{
+    display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:600;
+    padding:11px 18px; border-radius:9px; border:1px solid var(--border); color:var(--ink);
+    text-decoration:none; background:var(--surface);
+  }
+  .cta.primary{background:var(--accent); border-color:var(--accent); color:#1a0805;}
+
+  footer{margin-top:70px; padding-top:22px; border-top:1px solid var(--border); color:var(--ink-faint); font-size:12.5px;}
+
+  /* ---- plain-language front door ---- */
+  .plainhero{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:30px 32px 26px; margin:0 0 56px; box-shadow:var(--shadow);
+  }
+  .plainhero .tag{
+    font-family:ui-monospace,monospace; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--accent); margin:0 0 12px; font-weight:700;
+  }
+  .plainhero p.big{
+    font-size:18.5px; line-height:1.55; color:var(--ink); margin:0 0 26px; max-width:68ch;
+  }
+  .plainhero p.big b{color:var(--accent-ink); background:var(--accent-soft); padding:.05em .3em; border-radius:4px; font-weight:700;}
+
+  .inst-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:0 0 26px;}
+  .inst-card{
+    display:flex; gap:13px; align-items:flex-start;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:11px; padding:15px 16px;
+  }
+  .inst-card .ico{flex:0 0 auto; color:var(--accent); margin-top:1px;}
+  .inst-card h4{margin:0 0 4px; font-size:14px; font-weight:800; color:var(--ink);}
+  .inst-card p{margin:0; font-size:13px; color:var(--ink-soft); line-height:1.45;}
+  .inst-card .tech{display:inline-block; margin-top:7px; font-family:ui-monospace,monospace; font-size:10.5px; color:var(--ink-faint);}
+
+  .why-list{list-style:none; margin:0; padding:0; display:grid; gap:11px;}
+  .why-list li{display:flex; gap:11px; font-size:14.5px; color:var(--ink-soft); align-items:baseline; line-height:1.5;}
+  .why-list li b{color:var(--ink);}
+  .why-list .n{
+    flex:0 0 auto; width:20px; height:20px; border-radius:50%; background:var(--accent-soft); color:var(--accent);
+    font-family:ui-monospace,monospace; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;
+    margin-top:2px;
+  }
+
+  details.glossary{ margin-top:24px; border-top:1px solid var(--border); padding-top:16px; }
+  details.glossary summary{
+    cursor:pointer; font-size:13px; color:var(--ink-soft); font-weight:700; list-style:none;
+    display:flex; align-items:center; gap:7px; -webkit-tap-highlight-color:transparent;
+  }
+  details.glossary summary::-webkit-details-marker{display:none;}
+  details.glossary summary::before{content:"▸"; color:var(--accent); display:inline-block; transition:transform .15s;}
+  details.glossary[open] summary::before{transform:rotate(90deg);}
+  .gloss-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px 26px; margin:14px 0 0; padding:0;}
+  .gloss-grid dt{font-family:ui-monospace,monospace; font-size:12.5px; color:var(--accent); font-weight:700;}
+  .gloss-grid dd{margin:2px 0 0; font-size:12.8px; color:var(--ink-soft); line-height:1.4;}
+
+  .plain-lead{color:var(--ink); font-weight:600;}
+
+  .explorer-card{
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:12px;
+    padding:16px 18px; margin:0 0 14px;
+  }
+  .explorer-card .addr{font-family:ui-monospace,monospace; font-size:13.5px; color:var(--ink);}
+  .explorer-card .addr span{color:var(--ink-faint);}
+
+  .diff-grid{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:0 0 18px;}
+  @media (max-width:560px){ .diff-grid{grid-template-columns:1fr;} }
+  .diff-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; box-shadow:var(--shadow);}
+  .diff-card.tight{border-color:var(--accent);}
+  .diff-card .who{font-family:ui-monospace,monospace; font-size:12px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;}
+  .diff-card dl{margin:0; display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13.5px;}
+  .diff-card dt{color:var(--ink-soft);}
+  .diff-card dd{margin:0; font-weight:700; color:var(--ink); text-align:right;}
+  .diff-card dd.hot{color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">KARMA · X Layer AI Season Hackathon · AI-RWA track</p>
+  <h1>Would you let an AI agent<br/>spend money with <span class="hl">no limit, no bond, no revert?</span></h1>
+  <p class="lede">
+    That's what happens the moment an autonomous agent is handed a private key and a task. KARMA
+    compiles that task into an enforceable spending policy — a cap, a bond, an evaluator
+    requirement — <em>before</em> the money moves, and a smart contract on X Layer refuses any
+    call that breaks it. Not a recommendation. A revert.
+  </p>
+
+  <div class="stamp-row">
+    <span class="stamp good"><span class="dot"></span>KarmaPolicyEnforcer live on X Layer testnet — 0x1c74…31075</span>
+    <span class="stamp good"><span class="dot"></span>Real over-cap attempt, real on-chain revert (tx below)</span>
+    <span class="stamp good"><span class="dot"></span>Same agent, different task → provably different terms, both issued on-chain</span>
+    <span class="stamp good"><span class="dot"></span>63 passing tests: kernel, EIP-712 signed issuance, 256-run fuzz, ZK circuit</span>
+    <span class="stamp good"><span class="dot"></span>Interactive compiler runs in your browser — no wallet needed</span>
+  </div>
+
+  <div class="plainhero">
+    <p class="tag">Start here if you're not a blockchain person</p>
+    <p class="big">
+      Picture hiring a subcontractor you've never met and handing them your card with no limit. That's
+      what an AI agent does every time it's authorized to pay another agent for a task. KARMA is the
+      underwriter that sits in between: it reads the agent's track record, reads how risky the specific
+      task is (moving custody funds is riskier than a routine rebalance), and compiles both into
+      <b>one enforceable set of terms</b> — a per-transaction cap, a cumulative cap, a bond percentage,
+      whether a human/panel evaluator must sign off. That policy isn't a suggestion in a dashboard. It's
+      recorded on-chain, and the contract itself rejects any execution attempt that breaks it.
+    </p>
+
+    <div class="inst-grid">
+      <div class="inst-card">
+        <svg class="ico" viewBox="0 0 48 48" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 40V16l16-10 16 10v24"/><path d="M8 40h32"/><path d="M20 40V24h8v16"/>
+        </svg>
+        <div>
+          <h4>An underwriter, not a credit score</h4>
+          <p>A number alone can't say how much an agent should be allowed to spend on <em>this specific</em> obligation. KARMA compiles principal cap ∩ earned trust ∩ task risk into one artifact.</p>
+          <span class="tech">→ src/lib/trust/policy/compiler.ts</span>
+        </div>
+      </div>
+      <div class="inst-card">
+        <svg class="ico" viewBox="0 0 48 48" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="10" width="36" height="28" rx="4"/><path d="M6 18h36"/><circle cx="15" cy="27" r="2" fill="currentColor" stroke="none"/>
+        </svg>
+        <div>
+          <h4>Try it with zero setup</h4>
+          <p>The real compiler kernel runs client-side in your browser — no wallet, no server, no API key — and produces a real <code>policyHash</code>.</p>
+          <span class="tech">→ Try the interactive compiler (link below)</span>
+        </div>
+      </div>
+      <div class="inst-card">
+        <svg class="ico" viewBox="0 0 48 48" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M24 6l14 6v10c0 9-6 14.5-14 20-8-5.5-14-11-14-20V12z"/><path d="M18 24l4 4 8-8"/>
+        </svg>
+        <div>
+          <h4>The chain says no, for real</h4>
+          <p>A thin-history agent tried to exceed its cap against the live contract. It reverted on-chain — not simulated, a real rejected transaction.</p>
+          <span class="tech">→ Scenario A below</span>
+        </div>
+      </div>
+      <div class="inst-card">
+        <svg class="ico" viewBox="0 0 48 48" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="14" cy="14" r="6"/><circle cx="34" cy="14" r="6"/><circle cx="24" cy="36" r="6"/>
+          <path d="M17 18l5 12M31 18l-5 12M20 14h8"/>
+        </svg>
+        <div>
+          <h4>Not a wallet score</h4>
+          <p>Same agent, same evidence, two different tasks — the riskier one compiles to a tighter policy. Proof this underwrites the <em>obligation</em>, not the wallet.</p>
+          <span class="tech">→ Scenario B below</span>
+        </div>
+      </div>
+    </div>
+
+    <ul class="why-list">
+      <li><span class="n">1</span><span><b>Enforced, not advisory</b> — <code>validateAndRecordExecution</code> reverts on-chain the instant a call exceeds the compiled cap, a guarantee checked by a 256-run fuzz test across randomized call sequences.</span></li>
+      <li><span class="n">2</span><span><b>Deterministic and reproducible</b> — same inputs always produce the same <code>policyHash</code>; the rule trace names exactly which rule fired, not a black box.</span></li>
+      <li><span class="n">3</span><span><b>Nothing here is a mockup</b> — every address, tx link, and test count below came from a real run against X Layer testnet, and you can reproduce it yourself.</span></li>
+    </ul>
+
+    <details class="glossary">
+      <summary>The handful of technical words this page uses, in one sentence each</summary>
+      <dl class="gloss-grid">
+        <dt>Policy</dt><dd>The compiled output: per-tx cap, cumulative cap, bond %, evaluator requirement, expiry — hashed into one <code>policyHash</code>.</dd>
+        <dt>Task risk</dt><dd>A classification of how risky the specific obligation is (e.g. "custody required, irreversible") — tightens terms independently of the agent's own history.</dd>
+        <dt>Bond</dt><dd>A percentage of the transaction the agent must post as collateral, scaled up for riskier tasks.</dd>
+        <dt>Evaluator</dt><dd>Who must sign off on a dispute for this policy: none, a single arbiter, or an N-of-M panel — set by risk tier.</dd>
+        <dt>EIP-712 signed issuance</dt><dd>A principal can authorize a policy by signature instead of paying gas directly — anyone can submit it on their behalf.</dd>
+        <dt>PolicyCredentialProof</dt><dd>A zero-knowledge proof that an agent clears a reputation threshold without revealing the exact score, bound to this specific policy request so it can't be replayed.</dd>
+      </dl>
+    </details>
+  </div>
+
+  <div class="section">
+    <h2>Scenario A — the chain says no</h2>
+    <p class="deck"><span class="plain-lead">In one sentence: a thin-history agent tried to spend past its compiled cap, against the live contract, and it reverted.</span> Same RWA task, two agents with different track records, compiled to two different policies — then one of them broke its own limit for real.</p>
+
+    <div class="diff-grid">
+      <div class="diff-card">
+        <div class="who">Alpha — strong evidence</div>
+        <dl>
+          <dt>Terms</dt><dd>100 / 500 USDT</dd>
+          <dt>Attempted</dt><dd>80 USDT</dd>
+          <dt>Result</dt><dd>PERMITTED</dd>
+        </dl>
+      </div>
+      <div class="diff-card tight">
+        <div class="who">Beta — thin evidence</div>
+        <dl>
+          <dt>Terms</dt><dd class="hot">10 / 50 USDT</dd>
+          <dt>Attempted</dt><dd>25 USDT</dd>
+          <dt>Result</dt><dd class="hot">REJECTED on-chain</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="term">
+      <div class="bar"><span></span><span></span><span></span></div>
+      <pre>$ pnpm demo:xlayer:policy-lifecycle
+Alpha quote  -> cap=100/500  bond=20%  evaluator=SINGLE
+Beta  quote  -> cap=10/50    bond=20%  evaluator=SINGLE
+
+Alpha.execute(80)  on KarmaPolicyEnforcer @ 0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075
+<span class="ok">  status 1 (success) — PERMITTED</span>
+
+Beta.execute(25)   on KarmaPolicyEnforcer @ 0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075
+<span class="bad">  status 0 (reverted) — PER_TRANSACTION_LIMIT_EXCEEDED</span></pre>
+    </div>
+    <p class="cap">Both real transactions, X Layer testnet, not simulated:</p>
+    <div class="explorer-card">
+      <div class="addr"><span>Alpha PERMITTED</span> · 0x92395d48…62a0bc</div>
+      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0x92395d48333f9914a617161f6b450c63c5f8eacf8c46c514206496858862a0bc">View tx on OKLink →</a>
+    </div>
+    <div class="explorer-card">
+      <div class="addr"><span>Beta REJECTED — PER_TRANSACTION_LIMIT_EXCEEDED</span> · 0xd43b1b5c…fc05beb</div>
+      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb">View reverted tx on OKLink →</a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Scenario B — not a wallet score</h2>
+    <p class="deck"><span class="plain-lead">In one sentence: same agent, same reputation, different job — and the terms change on their own.</span> This is the direct rebuttal to "KARMA is just another reputation oracle." A wallet score can't do this; an obligation-aware policy compiler can.</p>
+
+    <div class="diff-grid">
+      <div class="diff-card">
+        <div class="who">Low-risk rebalance task</div>
+        <dl>
+          <dt>Terms</dt><dd>100 / 500 USDT</dd>
+          <dt>Bond</dt><dd>20%</dd>
+          <dt>Evaluator</dt><dd>NONE</dd>
+        </dl>
+      </div>
+      <div class="diff-card tight">
+        <div class="who">High-risk custody + external transfer</div>
+        <dl>
+          <dt>Terms</dt><dd class="hot">50 / 250 USDT</dd>
+          <dt>Bond</dt><dd class="hot">50%</dd>
+          <dt>Evaluator</dt><dd class="hot">PANEL</dd>
+        </dl>
+      </div>
+    </div>
+    <p class="cap">Same subject, same evidence — both policies issued live on X Layer testnet:</p>
+    <div class="explorer-card">
+      <div class="addr"><span>Low-risk policy issued</span> · 0x4deda90c…8f13fc02</div>
+      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0x4deda90c476e60c7785ab37cd3f4254b852ac46bd16c8d28265747348f13fc02">View tx on OKLink →</a>
+    </div>
+    <div class="explorer-card">
+      <div class="addr"><span>High-risk policy issued</span> · 0xc24e2bc2…b24cc382</div>
+      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0xc24e2bc2519d194fea6ad627c521bf0d8f23e46d261d0982bf2256bb24cc3822">View tx on OKLink →</a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Try it yourself — no wallet needed</h2>
+    <p class="deck"><span class="plain-lead">In one sentence: this is the real compiler kernel, running in your browser, right now.</span> Same code the MCP tools and the demo scripts above use — not a reimplementation for the demo page.</p>
+    <div class="cta-row">
+      <a class="cta primary" href="./xlayer_policy_demo.html">Open the interactive compiler →</a>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>What's real today, what's the last step</h2>
+    <p class="deck"><span class="plain-lead">In one sentence: here's the honest scoreboard.</span> Said plainly, on purpose — a claim we can't back up is worse than no claim.</p>
+    <div class="twrap">
+      <table class="status">
+        <tr><th>Layer</th><th>Status</th><th>Detail</th></tr>
+        <tr><td>Policy compiler kernel</td><td><span class="pill real">real</span></td><td>Deterministic, 36 passing property/unit tests — cap never exceeded, risk-up never loosens terms, same input → same <code>policyHash</code>.</td></tr>
+        <tr><td><code>KarmaPolicyEnforcer.sol</code></td><td><span class="pill real">real</span></td><td>Live on X Layer testnet, <code>0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075</code>. 20 Foundry tests incl. a 256-run fuzz test proving the exposure invariant holds across randomized call sequences.</td></tr>
+        <tr><td>EIP-712 signed policy issuance</td><td><span class="pill real">real</span></td><td>OpenZeppelin <code>EIP712</code>/<code>ECDSA</code>, 6 dedicated tests — wrong-key non-forgery, tampered-field rejection, replay rejection.</td></tr>
+        <tr><td>MCP tool surface</td><td><span class="pill real">real</span></td><td><code>karma_classify_task_risk</code>, <code>karma_quote_policy</code>, <code>karma_issue_policy</code>, <code>karma_execute_with_policy</code> — 7 passing tests.</td></tr>
+        <tr><td>Interactive browser demo</td><td><span class="pill real">real</span></td><td>Playwright-verified live in a real browser — compiles a policy client-side, no wallet needed for quote mode.</td></tr>
+        <tr><td><code>PolicyCredentialProof</code> (ZK)</td><td><span class="pill real">real</span></td><td>Groth16 proof, verified on-chain via the BN254 pairing precompile — 4 Foundry tests feed literal proof bytes from the circuit's own test suite, zero mocking.</td></tr>
+        <tr><td>Recursive delegation / cross-chain evidence dedup</td><td><span class="pill pending">next</span></td><td>Explicitly scoped out for this build — doesn't gate AI Season eligibility, see the repo's hackathon checklist.</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="cta-row">
+    <a class="cta primary" href="https://github.com/Eilodon/KARMA-OKX/blob/main/README.md">Project README →</a>
+    <a class="cta" href="https://github.com/Eilodon/KARMA-OKX/blob/main/docs/AI_SEASON_HACKATHON_CHECKLIST.md">Full AI Season checklist</a>
+    <a class="cta" href="https://www.oklink.com/xlayer-test/address/0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075">KarmaPolicyEnforcer on OKLink</a>
+  </div>
+
+  <footer>KARMA — the economic policy layer for autonomous agents. This page is a judge aid; the repository is the submission.</footer>
+</div>
+</body>
+</html>
