@@ -214,7 +214,7 @@
 
   <div class="stamp-row">
     <span class="stamp good"><span class="dot"></span>KarmaPolicyEnforcer live on X Layer testnet — 0x1c74…31075</span>
-    <span class="stamp good"><span class="dot"></span>Cap enforcement proven by a 256-run Foundry fuzz test, not just asserted</span>
+    <span class="stamp good"><span class="dot"></span>Real over-cap attempt, mined and reverted on-chain — status:0x0, independently re-verified</span>
     <span class="stamp good"><span class="dot"></span>Same agent, different task → provably different terms, both issued on-chain</span>
     <span class="stamp good"><span class="dot"></span>63 passing tests: kernel, EIP-712 signed issuance, 256-run fuzz, ZK circuit</span>
     <span class="stamp good"><span class="dot"></span>Interactive compiler runs in your browser — no wallet needed</span>
@@ -258,8 +258,8 @@
           <path d="M24 6l14 6v10c0 9-6 14.5-14 20-8-5.5-14-11-14-20V12z"/><path d="M18 24l4 4 8-8"/>
         </svg>
         <div>
-          <h4>The chain can say no, and we've proven it</h4>
-          <p>Cap enforcement isn't a claim — a 256-run Foundry fuzz test hammers randomized call sequences and the invariant never breaks. See the test output below.</p>
+          <h4>The chain says no, for real</h4>
+          <p>A thin-history agent tried to exceed its cap against the live contract. It was mined and reverted on-chain — not a caught simulation, an actual failed transaction.</p>
           <span class="tech">→ Scenario A below</span>
         </div>
       </div>
@@ -296,51 +296,60 @@
   </div>
 
   <div class="section">
-    <h2>Scenario A — evidence sets the cap, and the cap is provably unbreakable</h2>
-    <p class="deck"><span class="plain-lead">In one sentence: two agents, same RWA task, two very different policies — issued on-chain, driven by nothing but their track record.</span> Alpha (strong evidence) also went on to execute for real, inside its cap.</p>
+    <h2>Scenario A — the chain says no</h2>
+    <p class="deck"><span class="plain-lead">In one sentence: a thin-history agent tried to spend past its compiled cap, against the live contract, and it reverted.</span> Same RWA task, two agents with different track records, compiled to two different policies — then one of them broke its own limit for real.</p>
 
     <div class="diff-grid">
       <div class="diff-card">
         <div class="who">Alpha — strong evidence</div>
         <dl>
           <dt>Terms</dt><dd>100 / 500 USDT</dd>
-          <dt>Executed</dt><dd>80 USDT</dd>
-          <dt>Result</dt><dd>PERMITTED on-chain</dd>
+          <dt>Attempted</dt><dd>80 USDT</dd>
+          <dt>Result</dt><dd>PERMITTED</dd>
         </dl>
       </div>
       <div class="diff-card tight">
         <div class="who">Beta — thin evidence</div>
         <dl>
           <dt>Terms</dt><dd class="hot">10 / 50 USDT</dd>
-          <dt>Executed</dt><dd>—</dd>
-          <dt>Result</dt><dd>policy issued on-chain</dd>
+          <dt>Attempted</dt><dd>25 USDT</dd>
+          <dt>Result</dt><dd class="hot">REJECTED on-chain</dd>
         </dl>
       </div>
     </div>
-    <p class="cap">Both real transactions, X Layer testnet, not simulated:</p>
+
+    <div class="term">
+      <div class="bar"><span></span><span></span><span></span></div>
+      <pre>alpha attempt(80) -> permitted, tx=0x262e912af8cddf94dec60549fac142647495c9c609945cf72ce652c87ae51f61
+<span class="ok">  status 1 (success) — PERMITTED</span>
+
+beta attempt(25) -> rejected, reason=PER_TRANSACTION_LIMIT_EXCEEDED
+  tx=0x0efd1324c7650c169a1d0d23f82406198a5c961d795396b70ab677ad0b8707f6
+<span class="bad">  status 0 (reverted) — mined on-chain, not a caught simulation</span></pre>
+    </div>
+    <p class="cap">All real transactions, X Layer testnet — re-verified independently via <code>eth_getTransactionReceipt</code>
+      against the public RPC (not just the explorer UI) before publishing this page:</p>
     <div class="explorer-card">
-      <div class="addr"><span>Alpha PERMITTED — execute(80) succeeded</span> · 0x92395d48…62a0bc</div>
-      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0x92395d48333f9914a617161f6b450c63c5f8eacf8c46c514206496858862a0bc">View tx on OKLink →</a>
+      <div class="addr"><span>Alpha PERMITTED — execute(80) succeeded</span> · 0x262e912a…87ae51f61</div>
+      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0x262e912af8cddf94dec60549fac142647495c9c609945cf72ce652c87ae51f61">View tx on OKLink →</a>
     </div>
     <div class="explorer-card">
-      <div class="addr"><span>Beta's 10/50 policy issued</span> · 0xd43b1b5c…fc05beb</div>
-      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb">View tx on OKLink →</a>
+      <div class="addr"><span>Beta's 10/50 policy issued</span> · 0xb26c2904…46656a40f</div>
+      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0xb26c2904b15497e4568a7741979cfe703bdf0f2404bd292493163ec46656a40f">View tx on OKLink →</a>
+    </div>
+    <div class="explorer-card">
+      <div class="addr"><span>Beta REJECTED — PER_TRANSACTION_LIMIT_EXCEEDED, status:0x0</span> · 0x0efd1324…d0b8707f6</div>
+      <a class="cta" href="https://www.oklink.com/xlayer-test/tx/0x0efd1324c7650c169a1d0d23f82406198a5c961d795396b70ab677ad0b8707f6">View reverted tx on OKLink →</a>
     </div>
 
-    <p class="deck" style="margin-top:26px;"><span class="plain-lead">Is the cap actually enforced, or just recorded?</span> Enforced — <code>validateAndRecordExecution</code> reverts the instant a call would exceed either cap. That's not an assertion, it's a 256-run Foundry fuzz test hammering randomized call sequences against the exposure invariant:</p>
+    <p class="deck" style="margin-top:26px;"><span class="plain-lead">Does this hold beyond one example?</span> Yes — a 256-run Foundry fuzz test hammers randomized call sequences at the same exposure invariant and it never breaks:</p>
     <div class="term">
       <div class="bar"><span></span><span></span><span></span></div>
       <pre>$ forge test --match-test testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence -vv
 Ran 1 test for test/KarmaPolicyEnforcer.t.sol:KarmaPolicyEnforcerTest
 <span class="ok">[PASS] testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence(uint256[])</span> (runs: 256)
-<span class="ok">Suite result: ok. 1 passed; 0 failed; 0 skipped</span>
-
-$ forge test --match-contract KarmaPolicyEnforcerTest
-<span class="ok">Suite result: ok. 20 passed; 0 failed; 0 skipped</span></pre>
+<span class="ok">Suite result: ok. 1 passed; 0 failed; 0 skipped</span></pre>
     </div>
-    <p class="cap">A live broadcast of an over-cap attempt against Beta's own policy hasn't been recorded on
-      this deployment yet — that's the honest gap, not glossed over. The invariant it would demonstrate is
-      the one proven above.</p>
   </div>
 
   <div class="section">

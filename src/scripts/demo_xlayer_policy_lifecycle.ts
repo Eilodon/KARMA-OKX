@@ -137,8 +137,11 @@ async function main() {
   }
 
   // Alpha attempts within cap -> permitted (real on-chain acceptance).
-  const alphaExpiresAt = BigInt(Math.floor((Date.now() + 86_400_000) / 1_000));
-  const alphaPolicyId = computePolicyId({ principal: principal.address, subject: alpha.address, actionDigest, nonce: 1n, expiresAt: alphaExpiresAt });
+  // Reuse the exact policyId computed+used at issuance time (stored above) instead of
+  // recomputing expiresAt from a fresh Date.now() call here -- that drifts from the value used
+  // at issuance by however long the network calls in between took, yielding a different
+  // policyId and a spurious POLICY_NOT_FOUND instead of the intended permit/reject outcome.
+  const alphaPolicyId = (results.alpha as { policyId: `0x${string}` }).policyId;
   try {
     const outcome = await validateAndRecordExecution(alpha, { policyId: alphaPolicyId, amount: 80n });
     console.log(`\nalpha attempt(80) -> permitted, tx=${outcome.hash}`);
@@ -150,9 +153,9 @@ async function main() {
   }
 
   // Beta attempts OVER its (heavily reduced, thin-evidence) per-transaction cap -> on-chain revert.
-  // This is Scenario D, literally: "Beta calls execute(25). Revert."
-  const betaExpiresAt = alphaExpiresAt;
-  const betaPolicyId = computePolicyId({ principal: principal.address, subject: beta.address, actionDigest, nonce: 1n, expiresAt: betaExpiresAt });
+  // This is Scenario D, literally: "Beta calls execute(25). Revert." Same policyId-reuse fix as
+  // Alpha above.
+  const betaPolicyId = (results.beta as { policyId: `0x${string}` }).policyId;
   try {
     const outcome = await validateAndRecordExecution(beta, { policyId: betaPolicyId, amount: 25n });
     console.log(`\nbeta attempt(25) -> unexpectedly permitted, tx=${outcome.hash}`);

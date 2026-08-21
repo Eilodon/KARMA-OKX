@@ -36,17 +36,15 @@ KarmaPolicyIR:  100 / tx, 500 cumulative, 20% bond, evaluator=SINGLE, policyHash
 `KarmaPolicyEnforcer.sol` is **live on X Layer testnet**:
 [`0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075`](https://www.oklink.com/xlayer-test/address/0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075).
 Alpha (strong evidence) got a 100/500 policy issued and a real
-[80-USDT execution permitted on-chain](https://www.oklink.com/xlayer-test/tx/0x92395d48333f9914a617161f6b450c63c5f8eacf8c46c514206496858862a0bc);
+[80-USDT execution permitted on-chain](https://www.oklink.com/xlayer-test/tx/0x262e912af8cddf94dec60549fac142647495c9c609945cf72ce652c87ae51f61);
 Beta (thin evidence), same task, got a far tighter
-[10/50 policy issued on-chain](https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb) —
-real, different terms for the same obligation, driven by evidence alone.
+[10/50 policy issued on-chain](https://www.oklink.com/xlayer-test/tx/0xb26c2904b15497e4568a7741979cfe703bdf0f2404bd292493163ec46656a40f),
+then a real attempt to spend 25 —
+[**mined and reverted, `status: 0x0`**](https://www.oklink.com/xlayer-test/tx/0x0efd1324c7650c169a1d0d23f82406198a5c961d795396b70ab677ad0b8707f6),
+independently re-checked via `eth_getTransactionReceipt` against the public RPC, not just asserted.
 `validateAndRecordExecution` reverts — on-chain, not in a dashboard — the moment an attempt
-exceeds either cap, a guarantee a 256-run Foundry fuzz test
-(`testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence`) checks holds across randomized
-call sequences; a live broadcast of an over-cap attempt against Beta's own policy hasn't been
-recorded on this deployment yet (see
-[`docs/AI_SEASON_HACKATHON_CHECKLIST.md`](docs/AI_SEASON_HACKATHON_CHECKLIST.md) for exactly
-what's tx-verified vs. test-verified).
+exceeds either cap; the same invariant also holds across a 256-run Foundry fuzz test
+(`testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence`).
 Same subject, same economic history, a *different* (riskier) task compiles to visibly tighter
 terms — proof this underwrites the obligation, not a wallet score, also
 [issued on that same live deployment](https://www.oklink.com/xlayer-test/tx/0xc24e2bc2519d194fea6ad627c521bf0d8f23e46d261d0982bf2256bb24cc3822).

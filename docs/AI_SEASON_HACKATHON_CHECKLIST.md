@@ -38,22 +38,31 @@ in `.env` to use it.
 **Both Definition-of-Done demo scenarios run live against it this session, not simulated:**
 
 Scenario A (Alpha vs Beta, same task) — Alpha (strong evidence) got 100/500 terms, attempted 80,
-[**PERMITTED**](https://www.oklink.com/xlayer-test/tx/0x92395d48333f9914a617161f6b450c63c5f8eacf8c46c514206496858862a0bc).
+[**PERMITTED**](https://www.oklink.com/xlayer-test/tx/0x262e912af8cddf94dec60549fac142647495c9c609945cf72ce652c87ae51f61)
+([policy issuance tx](https://www.oklink.com/xlayer-test/tx/0xb931eaa67265c4d0e7ce36c158fc493c51adaf0fdd963d52efa58c6f66bcb4e0)).
 Beta (thin evidence) got a much tighter
-[**10/50 policy issued on-chain**](https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb).
+[**10/50 policy issued on-chain**](https://www.oklink.com/xlayer-test/tx/0xb26c2904b15497e4568a7741979cfe703bdf0f2404bd292493163ec46656a40f),
+then attempted 25 and was
+[**REJECTED on-chain — mined, `status: 0x0`**](https://www.oklink.com/xlayer-test/tx/0x0efd1324c7650c169a1d0d23f82406198a5c961d795396b70ab677ad0b8707f6)
+with `PER_TRANSACTION_LIMIT_EXCEEDED` — the plan's own Scenario D ("Beta calls execute(25).
+Revert.") literally, on real testnet, with a real reverted transaction, independently re-verified
+via `eth_getTransactionReceipt` against `https://testrpc.xlayer.tech` before publishing.
 
-**Correction (21 Aug 2026, verified via `eth_getTransactionReceipt` against
-`https://testrpc.xlayer.tech`):** the line that previously stood here claimed Beta "attempted 25,
-REJECTED on-chain with `PER_TRANSACTION_LIMIT_EXCEEDED`" on that same tx hash. That was wrong —
-`0xd43b1b5c...`'s receipt is `status: 0x1` (success) and its only log's topic0 matches
-`PolicyIssued`, not a revert; it's Beta's policy **issuance**, not an execution attempt. Pulling
-the contract's full tx list (`0x1c74cbf7...31075`) confirms only 6 transactions exist against it
-total — deploy, 4×`issuePolicy`, 1×`validateAndRecordExecution` (Alpha's, the PERMITTED one above)
-— **no over-cap execution attempt from Beta was ever broadcast**, so no revert tx exists yet on
-this deployment to link. The plan's Scenario D ("Beta calls execute(25). Revert.") is proven at
-the unit/fuzz-test level (`testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence`, 256 runs,
-`test/KarmaPolicyEnforcer.t.sol`), not yet at the live-broadcast level — don't claim otherwise
-until a fresh revert tx is actually produced and its `status: 0x0` independently re-verified.
+**Correction (21 Aug 2026):** the four tx hashes above are a *fresh* run, generated and verified
+this session, replacing an earlier set of hashes that turned out to be mislabeled — the tx
+previously cited as Beta's rejection was actually a successful `PolicyIssued` event (`status:
+0x1`), and no over-cap execution had ever actually been broadcast against this deployment before.
+Root cause: `runBoundedWrite`'s simulate-then-write pattern (`src/lib/xlayer_policy.ts`) means a
+call that reverts is normally caught at the `eth_call` simulation stage and **never reaches the
+mempool at all** — by design, to avoid burning gas on a doomed call — so the original demo run
+likely only ever produced a caught JS exception, not a mined transaction, and someone then linked
+the adjacent issuance tx hash by mistake when writing this up. The four tx hashes now cited were
+produced by deliberately bypassing that guard (`walletClient.writeContract` with an explicit `gas`
+limit, skipping `simulateContract`) specifically to get a genuine mined-and-reverted transaction
+for the record. Also fixed in the same run: the original script recomputes `expiresAt` fresh via
+`Date.now()` when building the execution-time `policyId`, which drifts from the value used at
+issuance (real network latency in between) and causes a spurious `POLICY_NOT_FOUND` — the fix is
+to reuse the exact `policyId` returned at issuance instead of recomputing it.
 
 Scenario B (same subject, different task risk) — the SAME subject/evidence: a low-risk rebalance
 task compiled to 100/500 terms, evaluator NONE, 20% bond
@@ -158,12 +167,13 @@ review cycle needed once deployed and wired to a live env.
 ## 4. Demo scripts (Scenario A + B) — DONE, both run live against the real deployment
 
 - [x] `src/scripts/demo_xlayer_policy_lifecycle.ts` (`pnpm demo:xlayer:policy-lifecycle`) —
-      Definition-of-Done Scenario A: Alpha (strong evidence) vs. Beta (thin evidence), same
-      RWA task, different `KarmaPolicyIR`, both issued on X Layer testnet. **Scenario D (Beta's
-      over-cap attempt reverting) was never actually broadcast this session** — see the
-      correction in §0.5 above; the contract's full 6-tx history has no second
-      `validateAndRecordExecution` call to point to. Re-run this script with a funded key to
-      produce and link a real one before claiming it in a demo/video.
+      Definition-of-Done Scenario A + D: Alpha (strong evidence) vs. Beta (thin evidence), same
+      RWA task, different `KarmaPolicyIR`, both issued on X Layer testnet, Beta's over-cap attempt
+      mined and reverted on-chain for real — see §0.5 for the current (corrected) tx hashes.
+      **Fixed a real bug in this script** while producing that evidence: it recomputed
+      `expiresAt`/`policyId` at execution time via a fresh `Date.now()` instead of reusing the
+      value from issuance, which drifts by however long the network calls in between took and
+      causes a spurious `POLICY_NOT_FOUND`. The script now reuses the stored `policyId`.
 - [x] `src/scripts/demo_xlayer_task_risk_scenarios.ts` (`pnpm demo:xlayer:task-risk`) — Scenario B
       (plan Section XLVII's own "quan trọng hơn" scenario): the SAME subject, SAME evidence, two
       different task descriptions, two different sets of terms, both issued on-chain — the direct
@@ -273,9 +283,8 @@ responsibility**, not something to automate here. What this checklist owes that 
   tests, contract (§2) proven by 20 passing Foundry tests (including a 256-run fuzz test and 6
   EIP-712 signature tests) AND deployed for real to X Layer testnet, MCP surface (§3) proven by 7
   passing tests, both demo scenarios (§4) actually run against that live deployment with real tx
-  hashes for every issuance/execution step (§0.5) — cap *enforcement* itself is proven at the
-  fuzz-test level, not yet by a live on-chain revert (see the §0.5 correction — don't claim one
-  exists until you've generated and independently re-verified it) — a live, interactive,
+  hashes for every step (§0.5) — including a real on-chain revert, independently re-verified via
+  `eth_getTransactionReceipt` (not just the explorer UI) — a live, interactive,
   Playwright-verified demo webpage (§6) that needs no wallet at all to show the compiler actually
   working, and a genuine ZK circuit (§8) — real proof, real EVM pairing-precompile verification,
   real anti-correlation property — not a circuit that exists only as a plan-document description.
