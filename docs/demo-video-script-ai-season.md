@@ -24,7 +24,8 @@ mocked output, no faked success.
 X post caption (under 280 chars, include the demo link + tag):
 > Built an Economic Policy Layer for AI agents on @XLayerOfficial: before an agent pays another
 > agent, KARMA compiles a hard spending cap, bond, and evaluator requirement — and the contract
-> reverts if it's broken. Real tx, real revert. #AISeason [demo video] [github link]
+> reverts if it's broken. Real tx, cap enforcement proven by a 256-run fuzz test. #AISeason [demo
+> video] [github link]
 
 ---
 
@@ -54,16 +55,21 @@ X post caption (under 280 chars, include the demo link + tag):
 
 ---
 
-### SCENE 2 — the chain says no (0:35–1:00)
+### SCENE 2 — the cap is unbreakable, not just recorded (0:35–1:00)
 
-- **ON SCREEN:** terminal capture of Scenario A against the live contract (see Appendix A for the
-  exact commands / tx hashes to have ready as cutaways).
-- **VOICEOVER:** "And this isn't just advice in a dashboard — it's enforced on-chain. Here's an
-  agent with a thin track record, compiled to a 50-USDT cap. It tries to spend 25. Watch."
-  *(cut to the revert)* "Rejected. On X Layer testnet, for real — not a mock, not a require()
-  statement that never runs in a demo."
-- **CAPTION:** `validateAndRecordExecution reverts on-chain. PER_TRANSACTION_LIMIT_EXCEEDED.`
-- **WOW BEAT:** the reverted transaction on the X Layer explorer (OKLink), hold 1.5s.
+- **ON SCREEN:** the two real Scenario A transactions on OKLink (Alpha's 100/500 policy +
+  successful 80-USDT execution; Beta's much tighter 10/50 policy), then cut to the Foundry fuzz
+  test output (see Appendix A for exact commands / tx hashes).
+- **VOICEOVER:** "And these aren't dashboard numbers — Alpha's terms and Beta's terms are both
+  real transactions on X Layer testnet. And the cap itself isn't just recorded, it's enforced: a
+  256-run fuzz test throws randomized call sequences at the contract, and the spending cap never
+  breaks — not once."
+- **CAPTION:** `validateAndRecordExecution — 256-run Foundry fuzz test, 0 failures.`
+- **WOW BEAT:** the `[PASS] ... (runs: 256)` fuzz test line, hold 1.5s.
+- **Honesty note:** do NOT claim a specific transaction shows a rejected/reverted execution
+  unless you've personally re-verified its receipt `status` is `0x0` (failure) — see Appendix C.
+  The two issuance tx hashes in Appendix A are both successful `PolicyIssued` events, not
+  reverts.
 
 ---
 
@@ -91,12 +97,17 @@ XLAYER_POLICY_ENFORCER_ADDRESS=0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075 PRIVAT
 ```
 
 **Already-recorded real transactions (safe to screen-record the explorer page directly, no key
-needed, nothing to re-run):**
-- Alpha PERMITTED (80 USDT, within 100/500 cap):
+needed, nothing to re-run) — both verified via `eth_getTransactionReceipt`, `status: 0x1`:**
+- Alpha PERMITTED — `validateAndRecordExecution(80)` succeeded, within its 100/500 cap:
   `https://www.oklink.com/xlayer-test/tx/0x92395d48333f9914a617161f6b450c63c5f8eacf8c46c514206496858862a0bc`
-- Beta REJECTED — `PER_TRANSACTION_LIMIT_EXCEEDED` (25 USDT against a 10/50 cap):
+- Beta's 10/50 policy issued (an `issuePolicy` call, NOT an execution attempt — do not caption
+  this as a rejection/revert):
   `https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb`
-- Contract itself: `https://www.oklink.com/xlayer-test/address/0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075`
+- Contract itself, full tx list (only 6 txs ever, none of them a failed execution — verified
+  in-session): `https://www.oklink.com/x-layer-testnet/address/0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075`
+- No live on-chain revert exists yet for this deployment. To get one for real before recording:
+  run `pnpm demo:xlayer:policy-lifecycle` with a funded key and let Beta's script attempt to
+  exceed its own cap — or cite the fuzz test instead (Appendix C item 5).
 
 **Full judge walkthrough page (good to show as a cutaway or link in the post):**
 ```
@@ -117,3 +128,12 @@ https://eilodon.github.io/KARMA-OKX/xlayer-policy-judges.html
 4. Don't lead with the 4-chain reputation oracle or the ZK circuit in this video — they're real and
    tested, but they dilute the one-sentence pitch. Keep them as answers if asked, not part of the
    ~100s cut.
+5. **Before recording, re-verify any "revert"/"rejected" claim yourself** —
+   `curl -X POST https://testrpc.xlayer.tech -H 'Content-Type: application/json' -d
+   '{"jsonrpc":"2.0","id":1,"method":"eth_getTransactionReceipt","params":["0x..."]}'` and check
+   `"status"` is `"0x0"` (failed) before captioning a tx as a rejection. Verified in-session
+   (21 Aug 2026): both documented Scenario A/B tx hashes are `"status":"0x1"` (success) —
+   `0xd43b1b5c...` is Beta's `PolicyIssued` event, not an execution attempt. Do not repeat the
+   earlier (incorrect) "REJECTED on-chain" claim tied to that hash. Use the fuzz test
+   (`testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence`) as the enforcement proof
+   instead, unless you've generated a fresh, verified revert tx yourself.

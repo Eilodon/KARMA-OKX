@@ -39,10 +39,21 @@ in `.env` to use it.
 
 Scenario A (Alpha vs Beta, same task) — Alpha (strong evidence) got 100/500 terms, attempted 80,
 [**PERMITTED**](https://www.oklink.com/xlayer-test/tx/0x92395d48333f9914a617161f6b450c63c5f8eacf8c46c514206496858862a0bc).
-Beta (thin evidence) got 10/50 terms, attempted 25,
-[**REJECTED on-chain**](https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb)
-with `PER_TRANSACTION_LIMIT_EXCEEDED` — the plan's own Scenario D ("Beta calls execute(25).
-Revert.") literally, on real testnet, with a real reverted transaction.
+Beta (thin evidence) got a much tighter
+[**10/50 policy issued on-chain**](https://www.oklink.com/xlayer-test/tx/0xd43b1b5ca0a351c02a9f766f1ad5389d106353f5ef47be9f54cbb26f3fc05beb).
+
+**Correction (21 Aug 2026, verified via `eth_getTransactionReceipt` against
+`https://testrpc.xlayer.tech`):** the line that previously stood here claimed Beta "attempted 25,
+REJECTED on-chain with `PER_TRANSACTION_LIMIT_EXCEEDED`" on that same tx hash. That was wrong —
+`0xd43b1b5c...`'s receipt is `status: 0x1` (success) and its only log's topic0 matches
+`PolicyIssued`, not a revert; it's Beta's policy **issuance**, not an execution attempt. Pulling
+the contract's full tx list (`0x1c74cbf7...31075`) confirms only 6 transactions exist against it
+total — deploy, 4×`issuePolicy`, 1×`validateAndRecordExecution` (Alpha's, the PERMITTED one above)
+— **no over-cap execution attempt from Beta was ever broadcast**, so no revert tx exists yet on
+this deployment to link. The plan's Scenario D ("Beta calls execute(25). Revert.") is proven at
+the unit/fuzz-test level (`testFuzz_CumulativeSpentNeverExceedsCapAcrossRandomSequence`, 256 runs,
+`test/KarmaPolicyEnforcer.t.sol`), not yet at the live-broadcast level — don't claim otherwise
+until a fresh revert tx is actually produced and its `status: 0x0` independently re-verified.
 
 Scenario B (same subject, different task risk) — the SAME subject/evidence: a low-risk rebalance
 task compiled to 100/500 terms, evaluator NONE, 20% bond
@@ -147,9 +158,12 @@ review cycle needed once deployed and wired to a live env.
 ## 4. Demo scripts (Scenario A + B) — DONE, both run live against the real deployment
 
 - [x] `src/scripts/demo_xlayer_policy_lifecycle.ts` (`pnpm demo:xlayer:policy-lifecycle`) —
-      Definition-of-Done Scenario A + D: Alpha (strong evidence) vs. Beta (thin evidence), same
-      RWA task, different `KarmaPolicyIR`, both issued on X Layer testnet, Beta's over-cap attempt
-      reverts on-chain for real.
+      Definition-of-Done Scenario A: Alpha (strong evidence) vs. Beta (thin evidence), same
+      RWA task, different `KarmaPolicyIR`, both issued on X Layer testnet. **Scenario D (Beta's
+      over-cap attempt reverting) was never actually broadcast this session** — see the
+      correction in §0.5 above; the contract's full 6-tx history has no second
+      `validateAndRecordExecution` call to point to. Re-run this script with a funded key to
+      produce and link a real one before claiming it in a demo/video.
 - [x] `src/scripts/demo_xlayer_task_risk_scenarios.ts` (`pnpm demo:xlayer:task-risk`) — Scenario B
       (plan Section XLVII's own "quan trọng hơn" scenario): the SAME subject, SAME evidence, two
       different task descriptions, two different sets of terms, both issued on-chain — the direct
@@ -259,7 +273,9 @@ responsibility**, not something to automate here. What this checklist owes that 
   tests, contract (§2) proven by 20 passing Foundry tests (including a 256-run fuzz test and 6
   EIP-712 signature tests) AND deployed for real to X Layer testnet, MCP surface (§3) proven by 7
   passing tests, both demo scenarios (§4) actually run against that live deployment with real tx
-  hashes for every step (§0.5) — including a real on-chain revert — a live, interactive,
+  hashes for every issuance/execution step (§0.5) — cap *enforcement* itself is proven at the
+  fuzz-test level, not yet by a live on-chain revert (see the §0.5 correction — don't claim one
+  exists until you've generated and independently re-verified it) — a live, interactive,
   Playwright-verified demo webpage (§6) that needs no wallet at all to show the compiler actually
   working, and a genuine ZK circuit (§8) — real proof, real EVM pairing-precompile verification,
   real anti-correlation property — not a circuit that exists only as a plan-document description.
