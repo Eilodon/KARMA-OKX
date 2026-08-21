@@ -39,13 +39,19 @@ primary_region = "sin"
   ALLOWED_HOSTS = "karma-trust-oracle.fly.dev,localhost,localhost:3333,127.0.0.1,127.0.0.1:3333"
   ALLOWED_ORIGINS = "https://karma-trust-oracle.fly.dev"
 
-  # Minimal plugin set: only the free trust-oracle tool + the always-on system tool. No
-  # karma.tool.ts (skill economy), no Redis, no indexer beyond the pinned-block one below --
-  # get_cross_chain_trust_score reads chain state per call and needs none of that
-  # (src/plugins/trust_oracle.tool.ts).
+  # Minimal plugin set: the free trust-oracle tool + the always-on system tool + the AI Season
+  # Economic Trust Compiler surface (src/plugins/policy.tool.ts). policy.tool.js is already
+  # allowlisted in src/core/plugin_loader.ts's isTrustedBuiltInPlugin() -- this just turns it on
+  # for this deployment. karma_classify_task_risk/karma_quote_policy are pure (no signer, no
+  # keystore agent needed). karma_issue_policy/karma_execute_with_policy require a keystore
+  # agentId that isn't provisioned on this deployment -- they stay listed and callable, but a
+  # caller without a matching agentId gets a clear "not found in keystore" error, not a silent
+  # no-op or a drained key (see requireSigner in policy.tool.ts). No karma.tool.ts (skill
+  # economy), no Redis, no indexer beyond the pinned-block one below -- get_cross_chain_trust_score
+  # reads chain state per call and needs none of that (src/plugins/trust_oracle.tool.ts).
   MCP_SAFE_MODE = "false"
   MCP_PLUGIN_ISOLATION_MODE = "policy"
-  MCP_PLUGIN_ALLOWLIST = "system.tool.js,trust_oracle.tool.js"
+  MCP_PLUGIN_ALLOWLIST = "system.tool.js,trust_oracle.tool.js,policy.tool.js"
 
   ENABLE_RATE_LIMIT = "true"
   RATE_LIMIT_MAX_REQUESTS = "60"
@@ -67,6 +73,10 @@ primary_region = "sin"
   XLAYER_RPC_URL = "https://testrpc.xlayer.tech"
   XLAYER_CHAIN_ID = "1952"
   XLAYER_CONTRACT_ADDRESS = "0xBF285628869c2EFaf6731F8503B39B7130474Cd2"
+  # KarmaPolicyEnforcer -- live on X Layer testnet (see README "Live deployments"). Needed for
+  # karma_issue_policy/karma_execute_with_policy to resolve the right contract; karma_quote_policy
+  # is pure and doesn't read this. Not a secret -- this is a public contract address.
+  XLAYER_POLICY_ENFORCER_ADDRESS = "0x1c74cbf7544ee10cbc3be9f424fe16e9a4731075"
 
 [http_service]
   internal_port = 3333
